@@ -139,10 +139,38 @@ class DBLiveTracker {
 
             // Draw routes on map
             this.drawRoutes();
+
+            // Fit map to show all routes
+            this.fitMapToRoutes();
         } catch (error) {
             console.error('Error loading routes:', error);
             this.showError('Error loading routes: ' + error.message);
         }
+    }
+
+    fitMapToRoutes() {
+        // Collect all coordinates from routes
+        const coords = [];
+
+        this.groupedRoutes.forEach(group => {
+            if (group.origin_lat && group.origin_lon) {
+                coords.push([group.origin_lat, group.origin_lon]);
+            }
+            if (group.dest_lat && group.dest_lon) {
+                coords.push([group.dest_lat, group.dest_lon]);
+            }
+        });
+
+        // If we have coordinates, fit the map to show all of them
+        if (coords.length > 0) {
+            const bounds = L.latLngBounds(coords);
+            // Fit bounds with some padding
+            this.map.fitBounds(bounds, {
+                padding: [50, 50], // 50px padding on all sides
+                maxZoom: 10 // Don't zoom in too much even for single route
+            });
+        }
+        // Otherwise keep the default view (Germany centered)
     }
 
     groupBidirectionalRoutes(routes) {
@@ -401,17 +429,32 @@ class DBLiveTracker {
                 this.renderSingleRouteStats(data, `direction${idx + 1}`);
             });
         } else {
-            // Single direction
-            document.getElementById('modalContent').innerHTML = '<div id="singleDirection"></div>';
-            this.renderSingleRouteStats(allStatsData[0], 'singleDirection');
+            // Single direction - also show with tab interface for consistency
+            const route = this.currentStatsRoutes[0];
+
+            content.innerHTML = `
+                <div class="direction-tabs">
+                    <button class="tab-button active" onclick="app.switchDirection(0)">
+                        ${route.origin_name} → ${route.dest_name}
+                    </button>
+                </div>
+                <div id="direction0" class="direction-content active"></div>
+            `;
+
+            document.getElementById('modalContent').innerHTML = '';
+            document.getElementById('modalContent').appendChild(content);
+
+            this.renderSingleRouteStats(allStatsData[0], 'direction0');
         }
     }
 
     combineRouteStatistics(allStatsData) {
         // Merge hourly statistics from both directions
         const hourlyStatsMap = new Map();
+        const dailyStatsMap = new Map();
 
         allStatsData.forEach(data => {
+            // Combine hourly stats
             data.hourly_stats.forEach(stat => {
                 const hour = stat.hour;
                 if (!hourlyStatsMap.has(hour)) {
@@ -426,14 +469,34 @@ class DBLiveTracker {
                 combined.count += stat.count;
                 combined.delays = combined.delays.concat(stat.delays);
             });
+
+            // Combine daily stats
+            data.daily_stats.forEach(stat => {
+                const day = stat.day;
+                if (!dailyStatsMap.has(day)) {
+                    dailyStatsMap.set(day, {
+                        day: day,
+                        day_name: stat.day_name,
+                        count: 0,
+                        delays: []
+                    });
+                }
+
+                const combined = dailyStatsMap.get(day);
+                combined.count += stat.count;
+                combined.delays = combined.delays.concat(stat.delays);
+            });
         });
 
-        // Convert map to sorted array
+        // Convert maps to sorted arrays
         const combinedHourlyStats = Array.from(hourlyStatsMap.values())
             .sort((a, b) => a.hour - b.hour);
+        const combinedDailyStats = Array.from(dailyStatsMap.values())
+            .sort((a, b) => a.day - b.day);
 
         return {
-            hourly_stats: combinedHourlyStats
+            hourly_stats: combinedHourlyStats,
+            daily_stats: combinedDailyStats
         };
     }
 
@@ -447,10 +510,25 @@ class DBLiveTracker {
         document.querySelectorAll('.direction-content').forEach((div, idx) => {
             div.style.display = idx === index ? 'block' : 'none';
         });
+
+        // Resize Plotly charts in the newly visible tab
+        // This is necessary because charts rendered while hidden don't have correct dimensions
+        setTimeout(() => {
+            const visibleDiv = document.querySelectorAll('.direction-content')[index];
+            if (visibleDiv) {
+                // Find all Plotly divs in the visible content
+                const plotlyDivs = visibleDiv.querySelectorAll('[id^="hourlyPlot"], [id^="dailyPlot"]');
+                plotlyDivs.forEach(div => {
+                    if (div && typeof Plotly !== 'undefined') {
+                        Plotly.Plots.resize(div);
+                    }
+                });
+            }
+        }, 50); // Small delay to ensure display:block has taken effect
     }
 
     renderSingleRouteStats(data, containerId) {
-        const { hourly_stats } = data;
+        const { hourly_stats, daily_stats } = data;
 
         // Calculate overall statistics
         const allDelays = hourly_stats.flatMap(h => h.delays).filter(d => d !== null);
@@ -464,14 +542,25 @@ class DBLiveTracker {
             ? ((onTimeCount / totalCount) * 100).toFixed(1)
             : 'N/A';
 
-        // Prepare data for boxplot
+        // Prepare data for hourly boxplot
         const hours = [];
-        const delays = [];
+        const hourlyDelays = [];
 
         hourly_stats.forEach(stat => {
             if (stat.count > 0) {
                 hours.push(stat.hour);
-                delays.push(stat.delays);
+                hourlyDelays.push(stat.delays);
+            }
+        });
+
+        // Prepare data for daily boxplot
+        const days = [];
+        const dailyDelays = [];
+
+        daily_stats.forEach(stat => {
+            if (stat.count > 0) {
+                days.push(stat.day_name);
+                dailyDelays.push(stat.delays);
             }
         });
 
@@ -498,19 +587,28 @@ class DBLiveTracker {
                     <div class="value">${onTimePercent}%</div>
                 </div>
             </div>
-            <div id="plotContainer${containerId}"></div>
+            <div id="hourlyPlot${containerId}"></div>
+            <div id="dailyPlot${containerId}" style="margin-top: 30px;"></div>
         `;
 
-        // Create boxplot with Plotly
+        // Create hourly boxplot with Plotly
         if (hours.length > 0) {
-            this.createBoxplot(hours, delays, `plotContainer${containerId}`);
+            this.createBoxplot(hours, hourlyDelays, `hourlyPlot${containerId}`, 'Delay Distribution by Time of Day', 'Time of Day');
         } else {
-            document.getElementById(`plotContainer${containerId}`).innerHTML =
-                '<div class="error-message">No data available for boxplot</div>';
+            document.getElementById(`hourlyPlot${containerId}`).innerHTML =
+                '<div class="error-message">No data available for hourly boxplot</div>';
+        }
+
+        // Create daily boxplot with Plotly
+        if (days.length > 0) {
+            this.createDailyBoxplot(days, dailyDelays, `dailyPlot${containerId}`);
+        } else {
+            document.getElementById(`dailyPlot${containerId}`).innerHTML =
+                '<div class="error-message">No data available for daily boxplot</div>';
         }
     }
 
-    createBoxplot(hours, delays, containerId = 'plotContainer') {
+    createBoxplot(hours, delays, containerId = 'plotContainer', title = 'Delay Distribution by Time of Day', xAxisTitle = 'Time of Day') {
         // Create traces for each hour
         const traces = hours.map((hour, idx) => ({
             y: delays[idx],
@@ -527,7 +625,7 @@ class DBLiveTracker {
 
         const layout = {
             title: {
-                text: 'Delay Distribution by Time of Day',
+                text: title,
                 font: { size: 16 }
             },
             yaxis: {
@@ -537,12 +635,60 @@ class DBLiveTracker {
                 zerolinewidth: 2
             },
             xaxis: {
-                title: 'Time of Day',
+                title: xAxisTitle,
                 tickmode: 'linear'
             },
             showlegend: false,
             height: 400,  // Reduced from 500 to fit modal better
             margin: { t: 40, b: 60, l: 50, r: 20 },  // Reduced margins
+            plot_bgcolor: '#fafafa',
+            paper_bgcolor: 'white',
+            autosize: true
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+        };
+
+        Plotly.newPlot(containerId, traces, layout, config);
+    }
+
+    createDailyBoxplot(days, delays, containerId = 'dailyPlotContainer') {
+        // Create traces for each day
+        const traces = days.map((day, idx) => ({
+            y: delays[idx],
+            type: 'box',
+            name: day,
+            boxmean: 'sd',
+            marker: {
+                color: '#f59e0b'
+            },
+            line: {
+                color: '#d97706'
+            }
+        }));
+
+        const layout = {
+            title: {
+                text: 'Delay Distribution by Day of Week',
+                font: { size: 16 }
+            },
+            yaxis: {
+                title: 'Delay (minutes)',
+                zeroline: true,
+                zerolinecolor: '#999',
+                zerolinewidth: 2
+            },
+            xaxis: {
+                title: 'Day of Week',
+                tickmode: 'linear'
+            },
+            showlegend: false,
+            height: 400,
+            margin: { t: 40, b: 60, l: 50, r: 20 },
             plot_bgcolor: '#fafafa',
             paper_bgcolor: 'white',
             autosize: true

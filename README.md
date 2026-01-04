@@ -104,8 +104,13 @@ The simplest way to run the system is to use the built-in background polling:
    ```env
    POLLING_ENABLED=true
    POLLING_INTERVAL=3600
-   POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf;München Hbf->Frankfurt Hbf
+   POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf->Frankfurt Hbf
    ```
+
+   **Route Format:**
+   - **Bidirectional**: `Station A<->Station B` (automatically polls both directions)
+   - **Unidirectional**: `Station A->Station B` (polls only this direction)
+   - **Multiple routes**: Separate with semicolons (`;`)
 
 2. **Start the server:**
    ```bash

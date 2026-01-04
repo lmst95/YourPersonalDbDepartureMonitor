@@ -301,6 +301,70 @@ def calculate_hourly_stats(db: Database, route_id: int) -> List[Dict[str, Any]]:
     return stats
 
 
+def calculate_daily_stats(db: Database, route_id: int) -> List[Dict[str, Any]]:
+    """
+    Calculate daily statistics (for boxplots) for a given route.
+    Returns list of dicts with day of week and delay statistics.
+    Day of week: 0 = Monday, 1 = Tuesday, ..., 6 = Sunday
+    """
+    rows = db.query_all(
+        """
+        SELECT
+            CAST(strftime('%w', planned_dt) AS INTEGER) as day_of_week,
+            delay_min
+        FROM departures
+        WHERE route_id = ? AND delay_min IS NOT NULL
+        ORDER BY day_of_week
+        """,
+        (route_id,)
+    )
+
+    # Group by day of week
+    # Note: SQLite's %w returns 0-6 where 0 = Sunday, we need to convert to Monday = 0
+    daily_data: Dict[int, List[int]] = {}
+    for row in rows:
+        # Convert from SQLite format (0=Sunday) to ISO format (0=Monday)
+        sqlite_dow = row["day_of_week"]
+        iso_dow = (sqlite_dow + 6) % 7  # 0=Mon, 1=Tue, ..., 6=Sun
+        delay = row["delay_min"]
+        if iso_dow not in daily_data:
+            daily_data[iso_dow] = []
+        daily_data[iso_dow].append(delay)
+
+    # Day names for display
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    # Calculate statistics for each day
+    stats = []
+    for day in range(7):
+        if day in daily_data and len(daily_data[day]) > 0:
+            delays = sorted(daily_data[day])
+            n = len(delays)
+            stats.append({
+                "day": day,
+                "day_name": day_names[day],
+                "delays": delays,  # All delay values for boxplot
+                "count": n,
+                "min": min(delays),
+                "max": max(delays),
+                "median": delays[n // 2],
+                "mean": sum(delays) / n
+            })
+        else:
+            stats.append({
+                "day": day,
+                "day_name": day_names[day],
+                "delays": [],
+                "count": 0,
+                "min": None,
+                "max": None,
+                "median": None,
+                "mean": None
+            })
+
+    return stats
+
+
 # ------------------------------ Background Polling --------------------------
 
 class BackgroundPoller:
@@ -314,14 +378,28 @@ class BackgroundPoller:
         self.routes = self._parse_routes(os.getenv("POLLING_ROUTES", ""))
 
     def _parse_routes(self, routes_str: str) -> List[Tuple[str, str]]:
-        """Parse routes from environment variable."""
+        """Parse routes from environment variable.
+
+        Supports two formats:
+        - Unidirectional: "Station A -> Station B"
+        - Bidirectional: "Station A <-> Station B" (creates both directions)
+        """
         if not routes_str:
             return []
 
         routes = []
         for route in routes_str.split(";"):
             route = route.strip()
-            if "->" in route:
+            if "<->" in route:
+                # Bidirectional route
+                origin, dest = route.split("<->", 1)
+                origin = origin.strip()
+                dest = dest.strip()
+                # Add both directions
+                routes.append((origin, dest))
+                routes.append((dest, origin))
+            elif "->" in route:
+                # Unidirectional route
                 origin, dest = route.split("->", 1)
                 routes.append((origin.strip(), dest.strip()))
         return routes
@@ -571,19 +649,21 @@ async def get_routes():
 
 @app.get("/api/routes/{route_id}/stats")
 async def get_route_stats(route_id: int):
-    """Get hourly statistics for a specific route (for boxplot visualization)."""
+    """Get hourly and daily statistics for a specific route (for boxplot visualization)."""
     # Check if route exists
     route = db.query_one("SELECT * FROM routes WHERE id = ?", (route_id,))
     if not route:
         raise HTTPException(status_code=404, detail="Route not found")
 
-    stats = calculate_hourly_stats(db, route_id)
+    hourly_stats = calculate_hourly_stats(db, route_id)
+    daily_stats = calculate_daily_stats(db, route_id)
 
     return {
         "route_id": route_id,
         "origin_name": route["origin_name"],
         "dest_name": route["dest_name"],
-        "hourly_stats": stats
+        "hourly_stats": hourly_stats,
+        "daily_stats": daily_stats
     }
 
 

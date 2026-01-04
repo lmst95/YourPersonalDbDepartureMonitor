@@ -96,8 +96,12 @@ Enable automatic polling within the web server by editing `.env`:
 ```env
 POLLING_ENABLED=true
 POLLING_INTERVAL=3600
-POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf
+POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf->Frankfurt Hbf
 ```
+
+**Route Format:**
+- `Station A<->Station B` = Bidirectional (both directions automatically)
+- `Station A->Station B` = Unidirectional (only this direction)
 
 Then just start the server - polling runs automatically!
 

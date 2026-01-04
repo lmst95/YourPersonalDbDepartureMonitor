@@ -36,14 +36,23 @@ Interval in seconds between polling cycles:
 ### 3. Configure Routes
 
 ```env
-POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf;München Hbf->Frankfurt Hbf
+POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf->Frankfurt Hbf
 ```
 
-Format: `Origin->Destination` separated by semicolons (`;`)
+**Route Format:**
+- **Bidirectional**: `Origin<->Destination` (automatically polls both directions)
+- **Unidirectional**: `Origin->Destination` (polls only this direction)
+- **Multiple routes**: Separate with semicolons (`;`)
 
 **Example with multiple routes:**
 ```env
-POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf;München Hbf->Frankfurt Hbf;Frankfurt Hbf->München Hbf;Köln Hbf->Berlin Hbf;Berlin Hbf->Köln Hbf
+POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf<->Frankfurt Hbf;Köln Hbf->Berlin Hbf
+```
+
+This is much simpler than the old way:
+```env
+# Old way (still supported):
+POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf;München Hbf->Frankfurt Hbf;Frankfurt Hbf->München Hbf
 ```
 
 ## Complete .env Example
@@ -56,7 +65,7 @@ DB_API_KEY=your_api_key_here
 # Background Polling Configuration
 POLLING_ENABLED=true
 POLLING_INTERVAL=3600
-POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;Hamburg Hbf->Berlin Hbf;München Hbf->Frankfurt Hbf;Frankfurt Hbf->München Hbf
+POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf<->Frankfurt Hbf
 ```
 
 ## Starting the Server with Background Polling
@@ -136,7 +145,7 @@ Polling cycle complete. Total: 18 departures stored
 ```bash
 # Configure in .env
 POLLING_ENABLED=true
-POLLING_ROUTES=Berlin Hbf->Hamburg Hbf;...
+POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf<->Frankfurt Hbf
 
 # Start server (polling runs automatically)
 python db_live_api.py --db ./train_db.db
@@ -270,7 +279,7 @@ cat .env | grep POLLING
 Ensure:
 - `POLLING_ENABLED=true` (not `false`)
 - `POLLING_ROUTES` contains valid route definitions
-- Routes use `->` separator
+- Routes use `->` (unidirectional) or `<->` (bidirectional) separator
 
 ### Import errors
 
@@ -323,7 +332,7 @@ Or remove the line entirely (defaults to `false`).
 ## Best Practices
 
 1. **Start with 1-hour intervals** for complete coverage
-2. **Add both directions** for each route (Berlin→Hamburg and Hamburg→Berlin)
+2. **Use bidirectional notation** (`<->`) for routes where you want both directions - it's simpler and less error-prone
 3. **Monitor logs** during first few cycles to ensure it's working
 4. **Use systemd** or Docker for automatic restarts
 5. **Check API limits** - don't poll too frequently or with too many routes
