@@ -1,7 +1,7 @@
 # DB Live Tracker
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00a393.svg)](https://fastapi.tiangolo.com)
 
 A real-time Deutsche Bahn train tracking system with interactive map visualization. Track train departures, delays, and reliability statistics across German railway routes.
@@ -74,7 +74,7 @@ CREATE TABLE departures (
 
 ### Prerequisites
 
-- Python >= 3.9
+- Python >= 3.11
 - Deutsche Bahn API credentials ([Get them here](https://developers.deutschebahn.com/))
 
 ### Installation

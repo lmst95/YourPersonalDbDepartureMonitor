@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db-live-tracker:
     build: .
@@ -9,12 +7,15 @@ services:
     env_file:
       - .env
     volumes:
-      - ./data:/data
-      - ./train_db.db:/data/train_db.db
+      - db-data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/routes', timeout=5)"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+
+volumes:
+  db-data:
+    driver: local

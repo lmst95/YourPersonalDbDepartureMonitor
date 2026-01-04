@@ -45,12 +45,42 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Add middleware for request logging
+from fastapi import Request
+import sys
+
+async def log_requests(request: Request, call_next):
+    """Middleware to log incoming requests."""
+    path = request.url.path
+    method = request.method
+
+    # Log request at INFO level (minimal info)
+    logger.info(f"{method} {path}")
+
+    # Log detailed info at DEBUG level
+    logger.debug(f"Request details: {method} {path} - Query: {request.query_params} - Headers: {dict(request.headers)}")
+
+    try:
+        response = await call_next(request)
+
+        # Log success at INFO level
+        logger.info(f"{method} {path} - {response.status_code}")
+
+        # Log detailed response info at DEBUG level
+        logger.debug(f"Response details: {method} {path} - Status: {response.status_code}")
+
+        return response
+    except Exception as e:
+        # Log errors at ERROR level (both INFO and DEBUG will see this)
+        logger.error(f"{method} {path} - Failed: {e}")
+        raise
+
 # Load environment variables
 def load_env():
     """Load environment variables from .env file."""
     env_path = Path(__file__).parent / ".env"
     if env_path.exists():
-        logger.info(f"Loading environment from: {env_path.absolute()}")
+        logger.debug(f"Loading environment from: {env_path.absolute()}")
         with open(env_path) as f:
             for line in f:
                 line = line.strip()
@@ -58,7 +88,7 @@ def load_env():
                     key, value = line.split("=", 1)
                     os.environ.setdefault(key.strip(), value.strip())
     else:
-        logger.warning(f".env file not found at {env_path.absolute()}")
+        logger.debug(f".env file not found at {env_path.absolute()}")
 
 load_env()
 
@@ -135,7 +165,7 @@ class Database:
 
         if 'status' not in dep_columns:
             self.conn.execute("ALTER TABLE departures ADD COLUMN status TEXT")
-            logger.info("Added status column to departures table for cancellation tracking")
+            logger.debug("Added status column to departures table for cancellation tracking")
 
         self.conn.commit()
 
@@ -298,26 +328,27 @@ class BackgroundPoller:
 
     async def start(self):
         """Start the background polling task."""
-        logger.info("Background Polling Configuration:")
-        logger.info(f"  POLLING_ENABLED env var: {os.getenv('POLLING_ENABLED', 'not set')}")
-        logger.info(f"  Enabled (parsed): {self.enabled}")
-        logger.info(f"  Routes configured: {len(self.routes)}")
-
         if not self.enabled:
-            logger.warning("Background polling is disabled")
-            logger.info("  To enable: Set POLLING_ENABLED=true in .env file")
+            logger.info("Background polling disabled")
+            logger.debug("Background Polling Configuration:")
+            logger.debug(f"  POLLING_ENABLED env var: {os.getenv('POLLING_ENABLED', 'not set')}")
+            logger.debug(f"  To enable: Set POLLING_ENABLED=true in .env file")
             return
 
         if not self.routes:
             logger.warning("No routes configured for polling")
-            logger.info("  To configure: Set POLLING_ROUTES in .env file")
+            logger.debug("  To configure: Set POLLING_ROUTES in .env file")
             return
 
-        logger.info("Starting background polling:")
-        logger.info(f"  - Interval: {self.interval} seconds ({self.interval/3600:.1f} hours)")
-        logger.info(f"  - Routes: {len(self.routes)}")
+        logger.info(f"Background polling started: {len(self.routes)} routes, {self.interval/3600:.1f}h interval")
+        logger.debug("Background Polling Configuration:")
+        logger.debug(f"  POLLING_ENABLED env var: {os.getenv('POLLING_ENABLED', 'not set')}")
+        logger.debug(f"  Enabled (parsed): {self.enabled}")
+        logger.debug(f"  Routes configured: {len(self.routes)}")
+        logger.debug(f"  Interval: {self.interval} seconds ({self.interval/3600:.1f} hours)")
+        logger.debug("  Routes:")
         for origin, dest in self.routes:
-            logger.info(f"    • {origin} → {dest}")
+            logger.debug(f"    • {origin} → {dest}")
 
         self.task = asyncio.create_task(self._poll_loop())
 
@@ -345,7 +376,8 @@ class BackgroundPoller:
 
     async def _poll_all_routes(self):
         """Poll all configured routes."""
-        logger.info(f"[{dt.datetime.now(TZ):%Y-%m-%d %H:%M:%S}] Starting polling cycle...")
+        logger.info(f"Polling cycle started")
+        logger.debug(f"[{dt.datetime.now(TZ):%Y-%m-%d %H:%M:%S}] Starting polling cycle...")
 
         # Import polling functions from db_live_connections
         import sys
@@ -389,19 +421,21 @@ class BackgroundPoller:
                 if deps:
                     inserted = store_to_database(self.db.db_path, origin, dest, deps)
                     total_inserted += inserted
-                    logger.info(f"  ✓ {origin_name} → {dest_name}: {inserted} departures stored")
+                    logger.info(f"{origin_name} → {dest_name}: {inserted} stored")
+                    logger.debug(f"  ✓ {origin_name} → {dest_name}: {inserted} departures stored")
                 else:
-                    logger.info(f"  - {origin_name} → {dest_name}: No direct departures in time window")
+                    logger.debug(f"  - {origin_name} → {dest_name}: No direct departures in time window")
 
             except StationNotFoundError as e:
-                logger.error(f"  ✗ {origin_name} → {dest_name}: Station not found - {e}")
-                logger.warning(f"     Skipping this route. Please check station names in .env file")
+                logger.error(f"{origin_name} → {dest_name}: Station not found - {e}")
+                logger.debug(f"     Skipping this route. Please check station names in .env file")
             except Exception as e:
                 import traceback
-                logger.error(f"  ✗ {origin_name} → {dest_name}: Error - {e}")
+                logger.error(f"{origin_name} → {dest_name}: Error - {e}")
                 logger.debug(f"     Traceback: {traceback.format_exc()}")
 
-        logger.info(f"Polling cycle complete. Total: {total_inserted} departures stored")
+        logger.info(f"Polling cycle complete: {total_inserted} stored")
+        logger.debug(f"Polling cycle complete. Total: {total_inserted} departures stored")
 
 
 # Global poller instance
@@ -441,6 +475,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add request logging middleware
+app.middleware("http")(log_requests)
 
 # Global database instance (set during startup)
 db: Optional[Database] = None
@@ -548,6 +585,23 @@ async def get_route_stats(route_id: int):
         "dest_name": route["dest_name"],
         "hourly_stats": stats
     }
+
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for monitoring and container orchestration."""
+    try:
+        # Check database connectivity
+        db.query_one("SELECT 1")
+
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": dt.datetime.now(TZ).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        raise HTTPException(status_code=503, detail=f"Service unhealthy: {str(e)}")
 
 
 @app.get("/api/polling/status")
