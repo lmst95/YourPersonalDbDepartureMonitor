@@ -227,13 +227,104 @@ def _get_xml(url: str) -> ET.Element:
     return _retry_request(_fetch)
 
 
+# ------------------------------ Station Cache --------------------------------
+
+# Global in-memory cache for station lookups
+_station_cache: Dict[str, List[Station]] = {}
+
+def _get_station_cache_db(db_path: str = "./train_db.db"):
+    """Get or create station cache table in database."""
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # Create station cache table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS station_cache (
+            search_pattern TEXT PRIMARY KEY,
+            stations_json TEXT NOT NULL,
+            cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    return conn
+
+def _load_cached_stations(pattern: str, db_path: str = "./train_db.db") -> Optional[List[Station]]:
+    """Load stations from cache (memory first, then database)."""
+    # Check in-memory cache first
+    pattern_lower = pattern.lower().strip()
+    if pattern_lower in _station_cache:
+        logger.debug(f"✓ Station cache hit (memory): '{pattern}'")
+        return _station_cache[pattern_lower]
+
+    # Check database cache
+    try:
+        import json
+        conn = _get_station_cache_db(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT stations_json FROM station_cache WHERE search_pattern = ?",
+            (pattern_lower,)
+        )
+        row = cur.fetchone()
+        conn.close()
+
+        if row:
+            logger.debug(f"✓ Station cache hit (database): '{pattern}'")
+            stations_data = json.loads(row[0])
+            stations = [Station(**s) for s in stations_data]
+            # Update in-memory cache
+            _station_cache[pattern_lower] = stations
+            return stations
+    except Exception as e:
+        logger.warning(f"Error loading from station cache: {e}")
+
+    return None
+
+def _save_to_cache(pattern: str, stations: List[Station], db_path: str = "./train_db.db"):
+    """Save stations to cache (memory and database)."""
+    pattern_lower = pattern.lower().strip()
+
+    # Save to in-memory cache
+    _station_cache[pattern_lower] = stations
+
+    # Save to database cache
+    try:
+        import json
+        from dataclasses import asdict
+
+        conn = _get_station_cache_db(db_path)
+        cur = conn.cursor()
+
+        stations_json = json.dumps([asdict(s) for s in stations])
+        cur.execute(
+            "INSERT OR REPLACE INTO station_cache (search_pattern, stations_json, cached_at) VALUES (?, ?, CURRENT_TIMESTAMP)",
+            (pattern_lower, stations_json)
+        )
+        conn.commit()
+        conn.close()
+        logger.debug(f"✓ Cached {len(stations)} stations for pattern: '{pattern}'")
+    except Exception as e:
+        logger.warning(f"Error saving to station cache: {e}")
+
+
 # ------------------------------ API wrappers --------------------------------
 
-def search_station(pattern: str) -> List[Station]:
+def search_station(pattern: str, use_cache: bool = True, db_path: str = "./train_db.db") -> List[Station]:
     """Search stations via /station/{pattern}.
 
     Returns a list of candidates (best-effort parsing of JSON or XML).
+    Supports caching to avoid redundant API calls.
     """
+    # Try to load from cache first
+    if use_cache:
+        cached = _load_cached_stations(pattern, db_path)
+        if cached is not None:
+            return cached
+
+    # Cache miss - fetch from API
+    logger.info(f"Fetching station from API: '{pattern}'")
+
     import urllib.parse as up
     url = f"{BASE}/station/{up.quote(pattern)}"
 
@@ -258,6 +349,9 @@ def search_station(pattern: str) -> List[Station]:
                         stations.append(Station(name=name, eva=eva.zfill(7), ril100=ril))
                 if stations:
                     logger.debug(f"Found {len(stations)} stations via JSON")
+                    # Save to cache before returning
+                    if use_cache:
+                        _save_to_cache(pattern, stations, db_path)
                     return stations
             except (ValueError, requests.exceptions.JSONDecodeError):
                 # Not JSON, fall through to XML
@@ -288,6 +382,11 @@ def search_station(pattern: str) -> List[Station]:
         if name and eva:
             stations.append(Station(name=name, eva=str(eva).zfill(7), ril100=ril))
     logger.debug(f"Found {len(stations)} stations via XML")
+
+    # Save to cache before returning
+    if use_cache and stations:
+        _save_to_cache(pattern, stations, db_path)
+
     return stations
 
 
@@ -410,28 +509,28 @@ class StationNotFoundError(Exception):
     pass
 
 
-def resolve_station_single(pattern: str) -> Station:
-    logger.info(f"Resolving station for pattern: '{pattern}'")
-    candidates = search_station(pattern)
+def resolve_station_single(pattern: str, use_cache: bool = True, db_path: str = "./train_db.db") -> Station:
+    logger.debug(f"Resolving station for pattern: '{pattern}'")
+    candidates = search_station(pattern, use_cache=use_cache, db_path=db_path)
 
     if not candidates:
         logger.error(f"No station found for pattern: '{pattern}'")
         raise StationNotFoundError(f"Keine Station gefunden für Muster: {pattern}")
 
-    # Log all candidates
-    logger.info(f"Found {len(candidates)} candidate(s):")
+    # Log all candidates at DEBUG level
+    logger.debug(f"Found {len(candidates)} candidate(s):")
     for i, st in enumerate(candidates):
-        logger.info(f"  [{i+1}] Name: '{st.name}' | EVA: {st.eva} | RIL100: {st.ril100}")
+        logger.debug(f"  [{i+1}] Name: '{st.name}' | EVA: {st.eva} | RIL100: {st.ril100}")
 
     # Prefer exact (case-insensitive) name match, else first candidate
     lowered = pattern.lower().strip()
     for st in candidates:
         if st.name.lower() == lowered:
-            logger.info(f"✓ Selected (exact match): '{st.name}' (EVA: {st.eva}, RIL100: {st.ril100})")
+            logger.info(f"✓ Station resolved: '{st.name}' (EVA: {st.eva})")
             return st
 
     # Use first candidate
-    logger.info(f"✓ Selected (first candidate): '{candidates[0].name}' (EVA: {candidates[0].eva}, RIL100: {candidates[0].ril100})")
+    logger.info(f"✓ Station resolved: '{candidates[0].name}' (EVA: {candidates[0].eva})")
     return candidates[0]
 
 

@@ -5,6 +5,8 @@ class DBLiveTracker {
         this.map = null;
         this.routes = [];
         this.routeLayers = [];
+        this.stationMarkers = new Map(); // Map of station key -> marker
+        this.stationRoutes = new Map(); // Map of station key -> {name, routes[]}
         this.modal = document.getElementById('statsModal');
         this.loadingOverlay = document.getElementById('loadingOverlay');
         this.notificationContainer = document.getElementById('notificationContainer');
@@ -226,6 +228,40 @@ class DBLiveTracker {
         // Clear existing layers
         this.routeLayers.forEach(layer => this.map.removeLayer(layer));
         this.routeLayers = [];
+        this.stationMarkers.clear();
+        this.stationRoutes.clear();
+
+        // Build station routes map
+        this.routes.forEach(route => {
+            const originKey = `${route.origin_eva}`;
+            const destKey = `${route.dest_eva}`;
+
+            // Add to origin station's outgoing routes
+            if (!this.stationRoutes.has(originKey)) {
+                this.stationRoutes.set(originKey, {
+                    name: route.origin_name,
+                    lat: route.origin_lat,
+                    lon: route.origin_lon,
+                    eva: route.origin_eva,
+                    outgoing: [],
+                    incoming: []
+                });
+            }
+            this.stationRoutes.get(originKey).outgoing.push(route);
+
+            // Add to destination station's incoming routes
+            if (!this.stationRoutes.has(destKey)) {
+                this.stationRoutes.set(destKey, {
+                    name: route.dest_name,
+                    lat: route.dest_lat,
+                    lon: route.dest_lon,
+                    eva: route.dest_eva,
+                    outgoing: [],
+                    incoming: []
+                });
+            }
+            this.stationRoutes.get(destKey).incoming.push(route);
+        });
 
         this.groupedRoutes.forEach(group => {
             // Only draw route if both origin and destination have coordinates
@@ -273,34 +309,158 @@ class DBLiveTracker {
             });
 
             this.routeLayers.push(line);
+        });
 
-            // Add markers for origin and destination
-            const originMarker = L.circleMarker(originCoords, {
-                radius: 6,
+        // Create station markers (one per unique station)
+        this.stationRoutes.forEach((stationInfo, stationKey) => {
+            if (!stationInfo.lat || !stationInfo.lon) return;
+
+            const coords = [stationInfo.lat, stationInfo.lon];
+            const routeCount = stationInfo.outgoing.length + stationInfo.incoming.length;
+
+            // Create marker
+            const marker = L.circleMarker(coords, {
+                radius: 8,
                 fillColor: '#667eea',
                 color: 'white',
                 weight: 2,
                 opacity: 1,
-                fillOpacity: 0.8
+                fillOpacity: 0.9
             }).addTo(this.map);
 
-            const destMarker = L.circleMarker(destCoords, {
-                radius: 6,
-                fillColor: '#764ba2',
-                color: 'white',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.8
-            }).addTo(this.map);
+            // Tooltip
+            marker.bindTooltip(stationInfo.name, { permanent: false, direction: 'top' });
 
-            // Tooltips for stations
-            originMarker.bindTooltip(group.origin_name, { permanent: false, direction: 'top' });
-            destMarker.bindTooltip(group.dest_name, { permanent: false, direction: 'top' });
+            // Click handler - show station details
+            marker.on('click', () => {
+                this.showStationDetails(stationInfo);
+            });
 
-            this.routeLayers.push(originMarker, destMarker);
+            // Hover effect
+            marker.on('mouseover', (e) => {
+                e.target.setStyle({
+                    radius: 10,
+                    fillColor: '#764ba2'
+                });
+            });
+
+            marker.on('mouseout', (e) => {
+                e.target.setStyle({
+                    radius: 8,
+                    fillColor: '#667eea'
+                });
+            });
+
+            this.stationMarkers.set(stationKey, marker);
+            this.routeLayers.push(marker);
         });
 
-        console.log(`Drew ${this.groupedRoutes.length} route groups on map (${this.routes.length} total routes)`);
+        console.log(`Drew ${this.groupedRoutes.length} route groups and ${this.stationMarkers.size} stations on map`);
+    }
+
+    findRouteGroup(routeId) {
+        // Find the grouped route that contains this route ID
+        return this.groupedRoutes.find(group => {
+            if (group.type === 'bidirectional') {
+                return group.routes[0].id === routeId || group.routes[1].id === routeId;
+            } else {
+                return group.routes[0].id === routeId;
+            }
+        });
+    }
+
+    showStationDetails(stationInfo) {
+        const popup = document.createElement('div');
+        popup.className = 'station-details-popup';
+        popup.style.cssText = 'max-width: 400px; font-family: system-ui;';
+
+        const outgoingCount = stationInfo.outgoing.length;
+        const incomingCount = stationInfo.incoming.length;
+
+        let html = `
+            <div style="padding: 10px;">
+                <h3 style="margin: 0 0 10px 0; color: #667eea; font-size: 18px;">
+                    ${stationInfo.name}
+                </h3>
+                <p style="margin: 0 0 10px 0; font-size: 12px; color: #666;">
+                    EVA: ${stationInfo.eva}
+                </p>
+        `;
+
+        // Outgoing routes
+        if (outgoingCount > 0) {
+            html += `
+                <div style="margin-bottom: 15px;">
+                    <h4 style="margin: 0 0 8px 0; color: #764ba2; font-size: 14px;">
+                        ➜ Outgoing Routes (${outgoingCount})
+                    </h4>
+                    <div style="max-height: 150px; overflow-y: auto;">
+            `;
+
+            stationInfo.outgoing.forEach(route => {
+                html += `
+                    <div style="padding: 6px; margin: 4px 0; background: #f3f4f6; border-radius: 4px; cursor: pointer; transition: background 0.2s;"
+                         onmouseover="this.style.background='#e5e7eb'"
+                         onmouseout="this.style.background='#f3f4f6'"
+                         onclick="app.showRouteStatsFromId(${route.id})">
+                        <div style="font-size: 13px; color: #333; font-weight: 500;">
+                            → ${route.dest_name}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+
+        // Incoming routes
+        if (incomingCount > 0) {
+            html += `
+                <div>
+                    <h4 style="margin: 0 0 8px 0; color: #764ba2; font-size: 14px;">
+                        ➜ Incoming Routes (${incomingCount})
+                    </h4>
+                    <div style="max-height: 150px; overflow-y: auto;">
+            `;
+
+            stationInfo.incoming.forEach(route => {
+                html += `
+                    <div style="padding: 6px; margin: 4px 0; background: #f3f4f6; border-radius: 4px; cursor: pointer; transition: background 0.2s;"
+                         onmouseover="this.style.background='#e5e7eb'"
+                         onmouseout="this.style.background='#f3f4f6'"
+                         onclick="app.showRouteStatsFromId(${route.id})">
+                        <div style="font-size: 13px; color: #333; font-weight: 500;">
+                            ← ${route.origin_name}
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+        }
+
+        if (outgoingCount === 0 && incomingCount === 0) {
+            html += `
+                <p style="color: #666; font-size: 13px; font-style: italic;">
+                    No routes configured for this station.
+                </p>
+            `;
+        }
+
+        html += `</div>`;
+        popup.innerHTML = html;
+
+        // Open modal with station details
+        this.modal.style.display = 'flex';
+        document.getElementById('modalTitle').textContent = `Station: ${stationInfo.name}`;
+        document.getElementById('modalContent').innerHTML = '';
+        document.getElementById('modalContent').appendChild(popup);
     }
 
     createRoutePopup(group) {
@@ -341,6 +501,22 @@ class DBLiveTracker {
             ${buttonsHtml}
         `;
         return popup;
+    }
+
+    showRouteStatsFromId(routeId) {
+        // Find the route group that contains this route
+        const group = this.findRouteGroup(routeId);
+
+        if (!group) {
+            console.error('Route group not found for route ID:', routeId);
+            return;
+        }
+
+        // Get all route IDs from the group
+        const routeIds = group.routes.map(r => r.id).join(',');
+
+        // Call showRouteStats with the full group
+        this.showRouteStats(routeIds);
     }
 
     async showRouteStats(routeIds) {
@@ -537,7 +713,7 @@ class DBLiveTracker {
             ? (allDelays.reduce((a, b) => a + b, 0) / totalCount).toFixed(1)
             : 'N/A';
         const maxDelay = totalCount > 0 ? Math.max(...allDelays) : 'N/A';
-        const onTimeCount = allDelays.filter(d => d <= 0).length;
+        const onTimeCount = allDelays.filter(d => d <= 3).length;
         const onTimePercent = totalCount > 0
             ? ((onTimeCount / totalCount) * 100).toFixed(1)
             : 'N/A';
@@ -748,6 +924,81 @@ class DBLiveTracker {
                 <p>${message}</p>
             </div>
         `;
+    }
+
+    showPrivacyPolicy() {
+        const privacyContent = `
+            <div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+                <h2 style="margin-bottom: 20px; color: #333;">Privacy Policy</h2>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Data Collection</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    This application collects and stores train departure data from the Deutsche Bahn IRIS API.
+                    No personal user data is collected, stored, or transmitted. All data displayed is publicly
+                    available information from Deutsche Bahn's public API.
+                </p>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Third-Party Services</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    This application uses the following third-party services:
+                </p>
+                <ul style="line-height: 1.8; color: #666; margin-left: 20px;">
+                    <li><strong>Deutsche Bahn IRIS API:</strong> Train data is retrieved from Deutsche Bahn's public API</li>
+                    <li><strong>OpenStreetMap Nominatim:</strong> Used for geocoding station coordinates</li>
+                    <li><strong>Leaflet.js:</strong> Map visualization library</li>
+                    <li><strong>Plotly.js:</strong> Statistical visualization library</li>
+                </ul>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Cookies and Local Storage</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    This application does not use cookies. It may use browser session storage temporarily
+                    to maintain state when navigating between pages, which is cleared when you close the browser.
+                </p>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Data Usage</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    The train departure data collected is used solely for:
+                </p>
+                <ul style="line-height: 1.8; color: #666; margin-left: 20px;">
+                    <li>Displaying real-time and historical delay statistics</li>
+                    <li>Generating visualizations of delay patterns</li>
+                    <li>Providing route reliability information</li>
+                </ul>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Data Retention</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    Train departure data is stored in a local SQLite database on the server hosting this application.
+                    Data is retained indefinitely for historical analysis purposes. No user-identifiable information
+                    is stored.
+                </p>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Open Source</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    This application is open source and licensed under the MIT License. You can review the complete
+                    source code and deployment configuration to verify privacy practices at:
+                    <br>
+                    <a href="https://github.com/lmst95/YourPersonalDbDepartureMonitor" target="_blank" style="color: #667eea; text-decoration: none;">
+                        https://github.com/lmst95/YourPersonalDbDepartureMonitor
+                    </a>
+                </p>
+
+                <h3 style="margin-top: 25px; margin-bottom: 10px; color: #555;">Contact</h3>
+                <p style="line-height: 1.6; color: #666;">
+                    For questions about data handling or privacy concerns, please open an issue on the
+                    <a href="https://github.com/lmst95/YourPersonalDbDepartureMonitor/issues" target="_blank" style="color: #667eea; text-decoration: none;">
+                        GitHub repository
+                    </a>.
+                </p>
+
+                <p style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; font-size: 0.9em; color: #888;">
+                    Last updated: January 2026
+                </p>
+            </div>
+        `;
+
+        this.modal.style.display = 'flex';
+        document.getElementById('modalTitle').textContent = 'Privacy Policy';
+        document.getElementById('modalContent').innerHTML = privacyContent;
     }
 }
 

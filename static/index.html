@@ -78,7 +78,38 @@
             top: 80px;
             left: 0;
             right: 0;
+            bottom: 40px;
+        }
+
+        #footer {
+            position: fixed;
             bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            color: #666;
+            z-index: 1000;
+        }
+
+        #footer a {
+            color: #667eea;
+            text-decoration: none;
+            margin: 0 0.5rem;
+        }
+
+        #footer a:hover {
+            text-decoration: underline;
+        }
+
+        .footer-separator {
+            margin: 0 0.5rem;
+            color: #ccc;
         }
 
         .route-popup {
@@ -580,6 +611,15 @@
 
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Footer -->
+    <div id="footer">
+        <span>© 2026 DB Live Tracker</span>
+        <span class="footer-separator">|</span>
+        <a href="#" onclick="app.showPrivacyPolicy(); return false;">Privacy Policy</a>
+        <span class="footer-separator">|</span>
+        <span>Data provided by Deutsche Bahn API</span>
+    </div>
 
     <!-- Application JavaScript -->
     <script src="/static/app.js"></script>

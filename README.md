@@ -12,8 +12,9 @@ A real-time Deutsche Bahn train tracking system with interactive map visualizati
 
 - **Historical Data Polling**: Continuously polls Deutsche Bahn IRIS API for past hour train data (actual delays, not estimates)
 - **Background Polling**: Built-in automatic polling within the web server (no separate processes needed!)
+- **Smart Station Caching**: Persistent cache for station lookups reduces API calls and improves performance
 - **Interactive Map**: Visualize all tracked routes on an interactive German map using Leaflet.js
-- **Statistical Analysis**: Hourly boxplot statistics showing delay patterns and reliability
+- **Statistical Analysis**: Hourly and daily boxplot statistics showing delay patterns and reliability
 - **REST API**: Full-featured FastAPI backend for data access
 - **Auto-geocoding**: Automatic station coordinate lookup using OpenStreetMap Nominatim
 

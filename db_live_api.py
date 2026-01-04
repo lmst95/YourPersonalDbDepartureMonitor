@@ -475,10 +475,10 @@ class BackgroundPoller:
         total_inserted = 0
         for origin_name, dest_name in self.routes:
             try:
-                # Resolve stations
+                # Resolve stations (with caching)
                 logger.debug(f"  → Resolving stations: {origin_name} → {dest_name}")
-                origin = await asyncio.to_thread(resolve_station_single, origin_name)
-                dest = await asyncio.to_thread(resolve_station_single, dest_name)
+                origin = await asyncio.to_thread(resolve_station_single, origin_name, True, self.db.db_path)
+                dest = await asyncio.to_thread(resolve_station_single, dest_name, True, self.db.db_path)
                 logger.debug(f"     Origin: {origin.name} (EVA: {origin.eva}, RIL100: {origin.ril100})")
                 logger.debug(f"     Dest: {dest.name} (EVA: {dest.eva}, RIL100: {dest.ril100})")
 
