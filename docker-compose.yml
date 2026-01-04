@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  db-live-tracker:
+    build: .
+    container_name: db-live-tracker
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+      - ./train_db.db:/data/train_db.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/api/routes', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 lmst95
+Copyright (c) 2026 DB Live Tracker Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,3 +19,19 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+THIRD-PARTY SERVICES DISCLAIMER
+
+This software uses the Deutsche Bahn IRIS API, which requires separate API
+credentials and is subject to Deutsche Bahn's own terms of service. Users must:
+
+1. Obtain their own API credentials from Deutsche Bahn
+   (https://developers.deutschebahn.com/)
+2. Comply with Deutsche Bahn's API terms of service and usage policies
+3. Understand that this license applies only to this software code, not to
+   Deutsche Bahn's API, data, or services
+
+The data retrieved from Deutsche Bahn's API remains the property of Deutsche
+Bahn AG and is subject to their licensing terms.
