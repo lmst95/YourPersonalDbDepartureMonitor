@@ -608,7 +608,9 @@ def format_row(d: Departure) -> str:
 def store_to_database(db_path: str, origin: Station, dest: Station, deps: List[Departure]) -> int:
     """
     Store departures to SQLite database.
-    Returns number of departures inserted.
+    If a departure already exists (same route, service_id, planned_dt), it updates
+    the delay information with the latest data.
+    Returns total number of departures inserted or updated.
     """
     import sqlite3
 
@@ -673,10 +675,39 @@ def store_to_database(db_path: str, origin: Station, dest: Station, deps: List[D
         )
         route_id = cur.lastrowid
 
-    # Insert departures (ignore duplicates)
+    # Insert or update departures (replace with latest data)
     inserted = 0
+    updated = 0
     for d in deps:
-        try:
+        # Check if entry already exists
+        cur.execute(
+            """
+            SELECT id, delay_min FROM departures
+            WHERE route_id = ? AND service_id = ? AND planned_dt = ?
+            """,
+            (route_id, d.service_id, d.planned_dt.isoformat())
+        )
+        existing = cur.fetchone()
+
+        if existing:
+            # Update existing entry with latest delay information
+            cur.execute(
+                """
+                UPDATE departures
+                SET realtime_dt = ?, delay_min = ?, realtime_platform = ?, status = ?
+                WHERE id = ?
+                """,
+                (
+                    d.realtime_dt.isoformat() if d.realtime_dt else None,
+                    d.delay_min,
+                    d.realtime_platform,
+                    d.status,
+                    existing[0]
+                )
+            )
+            updated += 1
+        else:
+            # Insert new entry
             cur.execute(
                 """
                 INSERT INTO departures
@@ -697,14 +728,14 @@ def store_to_database(db_path: str, origin: Station, dest: Station, deps: List[D
                 )
             )
             inserted += 1
-        except sqlite3.IntegrityError:
-            # Duplicate entry, skip
-            pass
 
     conn.commit()
     conn.close()
 
-    return inserted
+    if updated > 0:
+        logger.debug(f"Updated {updated} existing departure(s) with latest delay information")
+
+    return inserted + updated
 
 
 def main():

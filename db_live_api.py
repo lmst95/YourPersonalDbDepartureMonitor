@@ -373,9 +373,15 @@ class BackgroundPoller:
     def __init__(self, db: Database):
         self.db = db
         self.task: Optional[asyncio.Task] = None
+        self.delayed_task: Optional[asyncio.Task] = None
         self.enabled = os.getenv("POLLING_ENABLED", "false").lower() == "true"
         self.interval = int(os.getenv("POLLING_INTERVAL", "3600"))
         self.routes = self._parse_routes(os.getenv("POLLING_ROUTES", ""))
+
+        # Delayed polling configuration
+        self.delayed_enabled = os.getenv("DELAYED_POLLING_ENABLED", "false").lower() == "true"
+        self.delayed_interval = int(os.getenv("DELAYED_POLLING_INTERVAL", "3600"))
+        self.delayed_window = self._parse_delayed_window(os.getenv("DELAYED_POLLING_WINDOW", "3,4"))
 
     def _parse_routes(self, routes_str: str) -> List[Tuple[str, str]]:
         """Parse routes from environment variable.
@@ -404,6 +410,26 @@ class BackgroundPoller:
                 routes.append((origin.strip(), dest.strip()))
         return routes
 
+    def _parse_delayed_window(self, window_str: str) -> Tuple[float, float]:
+        """Parse delayed polling window from environment variable.
+
+        Format: "start_hours,end_hours" (e.g., "3,4" means 3-4 hours ago)
+        Returns: (start_hours, end_hours) tuple
+        """
+        try:
+            parts = window_str.split(",")
+            if len(parts) == 2:
+                start = float(parts[0].strip())
+                end = float(parts[1].strip())
+                if start >= 0 and end > start:
+                    return (start, end)
+        except (ValueError, AttributeError):
+            pass
+
+        # Default to 3-4 hours ago
+        logger.warning(f"Invalid DELAYED_POLLING_WINDOW format: {window_str}. Using default: 3,4")
+        return (3.0, 4.0)
+
     async def start(self):
         """Start the background polling task."""
         if not self.enabled:
@@ -430,6 +456,18 @@ class BackgroundPoller:
 
         self.task = asyncio.create_task(self._poll_loop())
 
+        # Start delayed polling if enabled
+        if self.delayed_enabled:
+            logger.info(f"Delayed polling started: {self.delayed_window[0]}-{self.delayed_window[1]}h window, {self.delayed_interval/3600:.1f}h interval")
+            logger.debug("Delayed Polling Configuration:")
+            logger.debug(f"  DELAYED_POLLING_ENABLED: {self.delayed_enabled}")
+            logger.debug(f"  Window: {self.delayed_window[0]}-{self.delayed_window[1]} hours ago")
+            logger.debug(f"  Interval: {self.delayed_interval} seconds ({self.delayed_interval/3600:.1f} hours)")
+            self.delayed_task = asyncio.create_task(self._delayed_poll_loop())
+        else:
+            logger.info("Delayed polling disabled")
+            logger.debug(f"  DELAYED_POLLING_ENABLED env var: {os.getenv('DELAYED_POLLING_ENABLED', 'not set')}")
+
     async def stop(self):
         """Stop the background polling task."""
         if self.task:
@@ -440,11 +478,19 @@ class BackgroundPoller:
                 pass
             logger.info("Background polling stopped")
 
+        if self.delayed_task:
+            self.delayed_task.cancel()
+            try:
+                await self.delayed_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("Delayed polling stopped")
+
     async def _poll_loop(self):
         """Main polling loop."""
         while True:
             try:
-                await self._poll_all_routes()
+                await self._poll_all_routes(hours_ago=1.0, window_hours=1.0, poll_type="standard")
                 await asyncio.sleep(self.interval)
             except asyncio.CancelledError:
                 break
@@ -452,10 +498,34 @@ class BackgroundPoller:
                 logger.error(f"Error in polling loop: {e}")
                 await asyncio.sleep(60)  # Wait 1 minute before retrying
 
-    async def _poll_all_routes(self):
-        """Poll all configured routes."""
-        logger.info(f"Polling cycle started")
-        logger.debug(f"[{dt.datetime.now(TZ):%Y-%m-%d %H:%M:%S}] Starting polling cycle...")
+    async def _delayed_poll_loop(self):
+        """Delayed polling loop for severely delayed trains."""
+        while True:
+            try:
+                start_hours, end_hours = self.delayed_window
+                window_size = end_hours - start_hours
+                await self._poll_all_routes(
+                    hours_ago=end_hours,
+                    window_hours=window_size,
+                    poll_type="delayed"
+                )
+                await asyncio.sleep(self.delayed_interval)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in delayed polling loop: {e}")
+                await asyncio.sleep(60)  # Wait 1 minute before retrying
+
+    async def _poll_all_routes(self, hours_ago: float = 1.0, window_hours: float = 1.0, poll_type: str = "standard"):
+        """Poll all configured routes.
+
+        Args:
+            hours_ago: How many hours back to look (e.g., 4.0 = 4 hours ago)
+            window_hours: Size of the time window in hours (e.g., 1.0 = 1 hour window)
+            poll_type: Type of polling ("standard" or "delayed")
+        """
+        logger.info(f"{poll_type.capitalize()} polling cycle started")
+        logger.debug(f"[{dt.datetime.now(TZ):%Y-%m-%d %H:%M:%S}] Starting {poll_type} polling cycle...")
 
         # Import polling functions from db_live_connections
         import sys
@@ -482,16 +552,17 @@ class BackgroundPoller:
                 logger.debug(f"     Origin: {origin.name} (EVA: {origin.eva}, RIL100: {origin.ril100})")
                 logger.debug(f"     Dest: {dest.name} (EVA: {dest.eva}, RIL100: {dest.ril100})")
 
-                # Find departures for the PAST hour to get actual delays (not estimates)
+                # Calculate time window
                 now = dt.datetime.now(TZ)
-                past_hour = now - dt.timedelta(hours=1)
-                logger.debug(f"     Fetching departures from {past_hour:%H:%M} to {now:%H:%M} (past hour)")
+                window_end = now - dt.timedelta(hours=hours_ago - window_hours)
+                window_start = now - dt.timedelta(hours=hours_ago)
+                logger.debug(f"     Fetching departures from {window_start:%H:%M} to {window_end:%H:%M} ({poll_type} window)")
                 deps = await asyncio.to_thread(
                     find_direct_departures_next_hour,
                     origin,
                     dest,
-                    past_hour,  # Start from 1 hour ago
-                    1.0  # 1 hour window
+                    window_start,
+                    window_hours
                 )
                 logger.debug(f"     Found {len(deps)} departures")
 
@@ -499,21 +570,21 @@ class BackgroundPoller:
                 if deps:
                     inserted = store_to_database(self.db.db_path, origin, dest, deps)
                     total_inserted += inserted
-                    logger.info(f"{origin_name} → {dest_name}: {inserted} stored")
+                    logger.info(f"[{poll_type}] {origin_name} → {dest_name}: {inserted} stored")
                     logger.debug(f"  ✓ {origin_name} → {dest_name}: {inserted} departures stored")
                 else:
                     logger.debug(f"  - {origin_name} → {dest_name}: No direct departures in time window")
 
             except StationNotFoundError as e:
-                logger.error(f"{origin_name} → {dest_name}: Station not found - {e}")
+                logger.error(f"[{poll_type}] {origin_name} → {dest_name}: Station not found - {e}")
                 logger.debug(f"     Skipping this route. Please check station names in .env file")
             except Exception as e:
                 import traceback
-                logger.error(f"{origin_name} → {dest_name}: Error - {e}")
+                logger.error(f"[{poll_type}] {origin_name} → {dest_name}: Error - {e}")
                 logger.debug(f"     Traceback: {traceback.format_exc()}")
 
-        logger.info(f"Polling cycle complete: {total_inserted} stored")
-        logger.debug(f"Polling cycle complete. Total: {total_inserted} departures stored")
+        logger.info(f"{poll_type.capitalize()} polling cycle complete: {total_inserted} stored")
+        logger.debug(f"{poll_type.capitalize()} polling cycle complete. Total: {total_inserted} departures stored")
 
 
 # Global poller instance
@@ -693,13 +764,215 @@ async def get_polling_status():
             "message": "Polling not initialized"
         }
 
-    return {
+    status = {
         "enabled": poller.enabled,
         "interval_seconds": poller.interval,
         "interval_hours": poller.interval / 3600,
         "routes_count": len(poller.routes),
         "routes": [{"origin": o, "destination": d} for o, d in poller.routes],
         "running": poller.task is not None and not poller.task.done() if poller.task else False
+    }
+
+    # Add delayed polling status if enabled
+    if poller.delayed_enabled:
+        status["delayed_polling"] = {
+            "enabled": poller.delayed_enabled,
+            "interval_seconds": poller.delayed_interval,
+            "interval_hours": poller.delayed_interval / 3600,
+            "window_start_hours": poller.delayed_window[0],
+            "window_end_hours": poller.delayed_window[1],
+            "window_description": f"{poller.delayed_window[0]}-{poller.delayed_window[1]} hours ago",
+            "running": poller.delayed_task is not None and not poller.delayed_task.done() if poller.delayed_task else False
+        }
+    else:
+        status["delayed_polling"] = {
+            "enabled": False,
+            "message": "Delayed polling not enabled"
+        }
+
+    return status
+
+
+@app.get("/api/departures/stats")
+async def get_departures_stats(
+    route_id: Optional[int] = Query(None, description="Filter by route ID"),
+    since: Optional[int] = Query(None, description="Hours to look back", ge=1, le=8760),
+    all_time: bool = Query(False, description="Get all data regardless of time"),
+    date_from: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    q: Optional[str] = Query(None, description="Search query")
+):
+    """Get statistics for departures with optional filters."""
+    where = []
+    params: List[Any] = []
+
+    # Time filtering (same as get_departures)
+    if all_time:
+        pass
+    elif date_from or date_to:
+        if date_from and date_to:
+            where.append("DATE(planned_dt) BETWEEN ? AND ?")
+            params.extend([date_from, date_to])
+        elif date_from:
+            where.append("DATE(planned_dt) >= ?")
+            params.append(date_from)
+        elif date_to:
+            where.append("DATE(planned_dt) <= ?")
+            params.append(date_to)
+    else:
+        hours = since if since is not None else 24
+        t_to = dt.datetime.now(TZ)
+        t_from = t_to - dt.timedelta(hours=hours)
+        where.append("datetime(planned_dt) BETWEEN ? AND ?")
+        params.extend([t_from.isoformat(), t_to.isoformat()])
+
+    if route_id is not None:
+        where.append("route_id = ?")
+        params.append(route_id)
+
+    if q:
+        where.append(
+            "(IFNULL(category,'') || ' ' || IFNULL(number,'') LIKE ? "
+            "OR IFNULL(service_id,'') LIKE ? "
+            "OR IFNULL(planned_platform,'') LIKE ? "
+            "OR IFNULL(realtime_platform,'') LIKE ?)"
+        )
+        like = f"%{q}%"
+        params.extend([like, like, like, like])
+
+    where_sql = " AND ".join(where) if where else "1=1"
+
+    # Get hourly statistics
+    hourly_rows = db.query_all(
+        f"""
+        SELECT
+            CAST(strftime('%H', planned_dt) AS INTEGER) as hour,
+            delay_min
+        FROM departures
+        WHERE {where_sql} AND delay_min IS NOT NULL
+        ORDER BY hour
+        """,
+        tuple(params)
+    )
+
+    # Get daily statistics
+    daily_rows = db.query_all(
+        f"""
+        SELECT
+            CAST(strftime('%w', planned_dt) AS INTEGER) as day_of_week,
+            delay_min
+        FROM departures
+        WHERE {where_sql} AND delay_min IS NOT NULL
+        ORDER BY day_of_week
+        """,
+        tuple(params)
+    )
+
+    # Get summary statistics
+    summary_row = db.query_one(
+        f"""
+        SELECT
+            COUNT(*) as total_count,
+            AVG(delay_min) as avg_delay,
+            MAX(delay_min) as max_delay,
+            SUM(CASE WHEN delay_min <= 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as ontime_rate
+        FROM departures
+        WHERE {where_sql} AND delay_min IS NOT NULL
+        """,
+        tuple(params)
+    )
+
+    # Calculate hourly stats
+    hourly_data: Dict[int, List[int]] = {}
+    for row in hourly_rows:
+        hour = row["hour"]
+        delay = row["delay_min"]
+        if hour not in hourly_data:
+            hourly_data[hour] = []
+        hourly_data[hour].append(delay)
+
+    hourly_stats = []
+    for hour in range(24):
+        if hour in hourly_data and len(hourly_data[hour]) > 0:
+            delays = sorted(hourly_data[hour])
+            n = len(delays)
+            hourly_stats.append({
+                "hour": hour,
+                "delays": delays,
+                "count": n,
+                "min": min(delays),
+                "max": max(delays),
+                "median": delays[n // 2],
+                "mean": sum(delays) / n
+            })
+        else:
+            hourly_stats.append({
+                "hour": hour,
+                "delays": [],
+                "count": 0,
+                "min": None,
+                "max": None,
+                "median": None,
+                "mean": None
+            })
+
+    # Calculate daily stats
+    daily_data: Dict[int, List[int]] = {}
+    for row in daily_rows:
+        sqlite_dow = row["day_of_week"]
+        iso_dow = (sqlite_dow + 6) % 7  # Convert to ISO format (0=Monday)
+        delay = row["delay_min"]
+        if iso_dow not in daily_data:
+            daily_data[iso_dow] = []
+        daily_data[iso_dow].append(delay)
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    daily_stats = []
+    for day in range(7):
+        if day in daily_data and len(daily_data[day]) > 0:
+            delays = sorted(daily_data[day])
+            n = len(delays)
+            daily_stats.append({
+                "day": day,
+                "day_name": day_names[day],
+                "delays": delays,
+                "count": n,
+                "min": min(delays),
+                "max": max(delays),
+                "median": delays[n // 2],
+                "mean": sum(delays) / n
+            })
+        else:
+            daily_stats.append({
+                "day": day,
+                "day_name": day_names[day],
+                "delays": [],
+                "count": 0,
+                "min": None,
+                "max": None,
+                "median": None,
+                "mean": None
+            })
+
+    # Calculate median delay
+    all_delays = []
+    for row in hourly_rows:
+        all_delays.append(row["delay_min"])
+    all_delays.sort()
+    median_delay = all_delays[len(all_delays) // 2] if all_delays else None
+
+    summary = {
+        "total_count": summary_row["total_count"] if summary_row else 0,
+        "avg_delay": summary_row["avg_delay"] if summary_row else None,
+        "max_delay": summary_row["max_delay"] if summary_row else None,
+        "median_delay": median_delay,
+        "ontime_rate": summary_row["ontime_rate"] if summary_row else None
+    }
+
+    return {
+        "hourly_stats": hourly_stats,
+        "daily_stats": daily_stats,
+        "summary": summary
     }
 
 

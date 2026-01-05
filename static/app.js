@@ -470,24 +470,25 @@ class DBLiveTracker {
         // Create buttons for each direction
         let buttonsHtml = '';
         if (group.type === 'bidirectional') {
-            // Show buttons for both directions
+            // Show buttons for both directions - always pass all routes and focus on clicked tab
+            const allRouteIds = group.routes.map(r => r.id).join(',');
             buttonsHtml = `
                 <div class="popup-buttons">
-                    <button class="direction-btn" onclick="app.showRouteStats('${group.routes[0].id}')">
+                    <button class="direction-btn" onclick="app.showRouteStats('${allRouteIds}', 1)">
                         ${group.routes[0].origin_name} → ${group.routes[0].dest_name}
                     </button>
-                    <button class="direction-btn" onclick="app.showRouteStats('${group.routes[1].id}')">
+                    <button class="direction-btn" onclick="app.showRouteStats('${allRouteIds}', 2)">
                         ${group.routes[1].origin_name} → ${group.routes[1].dest_name}
                     </button>
-                    <button class="both-directions-btn" onclick="app.showRouteStats('${group.routes.map(r => r.id).join(',')}')">
+                    <button class="both-directions-btn" onclick="app.showRouteStats('${allRouteIds}', 0)">
                         Both Directions
                     </button>
                 </div>
             `;
         } else {
-            // Single direction
+            // Unidirectional - find reverse route and show all tabs, focusing on the clicked direction
             buttonsHtml = `
-                <button class="single-direction-btn" onclick="app.showRouteStats('${group.routes[0].id}')">
+                <button class="single-direction-btn" onclick="app.showRouteStatsFromId(${group.routes[0].id})">
                     Show Statistics
                 </button>
             `;
@@ -504,30 +505,42 @@ class DBLiveTracker {
     }
 
     showRouteStatsFromId(routeId) {
-        // Find the route group that contains this route
-        const group = this.findRouteGroup(routeId);
+        // Find the route that was clicked
+        const route = this.routes.find(r => r.id === parseInt(routeId));
 
-        if (!group) {
-            console.error('Route group not found for route ID:', routeId);
+        if (!route) {
+            console.error('Route not found for route ID:', routeId);
             return;
         }
 
-        // Get all route IDs from the group
-        const routeIds = group.routes.map(r => r.id).join(',');
+        // Always look for the reverse route in the raw routes data
+        const reverseRoute = this.routes.find(r =>
+            r.origin_eva === route.dest_eva &&
+            r.dest_eva === route.origin_eva
+        );
 
-        // Call showRouteStats with the full group
-        this.showRouteStats(routeIds);
+        if (reverseRoute) {
+            // Both directions exist - show all tabs with focus on clicked direction
+            // Tab 0: Combined, Tab 1: First route, Tab 2: Second route
+            const routeIds = [route.id, reverseRoute.id].join(',');
+            // Focus on tab 1 (the clicked route is first)
+            this.showRouteStats(routeIds, 1);
+        } else {
+            // Only one direction exists - show single tab
+            this.showRouteStats(route.id.toString(), 0);
+        }
     }
 
-    async showRouteStats(routeIds) {
+    async showRouteStats(routeIds, focusedTabIndex = 0) {
         // Parse route IDs (can be single or comma-separated)
         const ids = routeIds.toString().split(',').map(id => parseInt(id.trim()));
         const routes = ids.map(id => this.routes.find(r => r.id === id)).filter(r => r);
 
         if (routes.length === 0) return;
 
-        // Store routes for later use in renderStatistics
+        // Store routes and focused tab for later use in renderStatistics
         this.currentStatsRoutes = routes;
+        this.focusedTabIndex = focusedTabIndex;
 
         // Determine arrow direction and title
         let arrow = '→';
@@ -556,8 +569,8 @@ class DBLiveTracker {
             );
             const allStats = await Promise.all(statsPromises);
 
-            // Render statistics
-            this.renderStatistics(allStats);
+            // Render statistics with the focused tab
+            this.renderStatistics(allStats, this.focusedTabIndex);
         } catch (error) {
             console.error('Error loading statistics:', error);
             document.getElementById('modalContent').innerHTML =
@@ -565,7 +578,7 @@ class DBLiveTracker {
         }
     }
 
-    renderStatistics(allStatsData) {
+    renderStatistics(allStatsData, focusedTabIndex = 0) {
         const content = document.createElement('div');
         content.className = 'modal-statistics';
 
@@ -578,19 +591,19 @@ class DBLiveTracker {
             // Show tabs for combined view and both individual directions
             content.innerHTML = `
                 <div class="direction-tabs">
-                    <button class="tab-button active" onclick="app.switchDirection(0)">
+                    <button class="tab-button ${focusedTabIndex === 0 ? 'active' : ''}" onclick="app.switchDirection(0)">
                         Combined ↔
                     </button>
-                    <button class="tab-button" onclick="app.switchDirection(1)">
+                    <button class="tab-button ${focusedTabIndex === 1 ? 'active' : ''}" onclick="app.switchDirection(1)">
                         ${routes[0].origin_name} → ${routes[0].dest_name}
                     </button>
-                    <button class="tab-button" onclick="app.switchDirection(2)">
+                    <button class="tab-button ${focusedTabIndex === 2 ? 'active' : ''}" onclick="app.switchDirection(2)">
                         ${routes[1].origin_name} → ${routes[1].dest_name}
                     </button>
                 </div>
-                <div id="direction0" class="direction-content active"></div>
-                <div id="direction1" class="direction-content" style="display: none;"></div>
-                <div id="direction2" class="direction-content" style="display: none;"></div>
+                <div id="direction0" class="direction-content ${focusedTabIndex === 0 ? 'active' : ''}" style="display: ${focusedTabIndex === 0 ? 'block' : 'none'}"></div>
+                <div id="direction1" class="direction-content ${focusedTabIndex === 1 ? 'active' : ''}" style="display: ${focusedTabIndex === 1 ? 'block' : 'none'}"></div>
+                <div id="direction2" class="direction-content ${focusedTabIndex === 2 ? 'active' : ''}" style="display: ${focusedTabIndex === 2 ? 'block' : 'none'}"></div>
             `;
 
             document.getElementById('modalContent').innerHTML = '';

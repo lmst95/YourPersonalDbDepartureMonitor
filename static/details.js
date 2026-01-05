@@ -493,6 +493,195 @@ class DetailsPage {
             </tr>
         `;
     }
+
+    async showStatsModal() {
+        const modal = document.getElementById('statsModal');
+        const modalBody = document.getElementById('statsModalBody');
+
+        // Show modal with loading state
+        modal.classList.add('active');
+        modalBody.innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                Loading statistics...
+            </div>
+        `;
+
+        try {
+            // Fetch stats using current filter settings
+            const stats = await this.fetchStats();
+            this.renderStats(stats);
+        } catch (error) {
+            modalBody.innerHTML = `
+                <div class="error-message">
+                    ❌ Failed to load statistics: ${error.message}
+                </div>
+            `;
+        }
+    }
+
+    closeStatsModal() {
+        const modal = document.getElementById('statsModal');
+        modal.classList.remove('active');
+    }
+
+    async fetchStats() {
+        // Build query params based on current filters
+        const params = new URLSearchParams();
+
+        if (this.filters.route_id) {
+            params.append('route_id', this.filters.route_id);
+        }
+
+        if (this.filters.query) {
+            params.append('q', this.filters.query);
+        }
+
+        if (this.filters.time_mode === 'relative') {
+            if (this.filters.hours === 'all') {
+                params.append('all_time', 'true');
+            } else {
+                params.append('since', this.filters.hours);
+            }
+        } else {
+            if (this.filters.date_from) {
+                params.append('date_from', this.filters.date_from);
+            }
+            if (this.filters.date_to) {
+                params.append('date_to', this.filters.date_to);
+            }
+        }
+
+        const response = await this.fetchWithErrorHandling(`/api/departures/stats?${params}`);
+        return await response.json();
+    }
+
+    renderStats(data) {
+        const modalBody = document.getElementById('statsModalBody');
+        const { hourly_stats, daily_stats, summary } = data;
+
+        // Create stats summary cards
+        const summaryHTML = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Total Departures</div>
+                    <div class="value">${summary.total_count}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Average Delay</div>
+                    <div class="value">${summary.avg_delay !== null ? summary.avg_delay.toFixed(1) + ' min' : 'N/A'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Median Delay</div>
+                    <div class="value">${summary.median_delay !== null ? summary.median_delay + ' min' : 'N/A'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Max Delay</div>
+                    <div class="value">${summary.max_delay !== null ? summary.max_delay + ' min' : 'N/A'}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">On-time Rate</div>
+                    <div class="value">${summary.ontime_rate !== null ? summary.ontime_rate.toFixed(1) + '%' : 'N/A'}</div>
+                </div>
+            </div>
+        `;
+
+        modalBody.innerHTML = summaryHTML;
+
+        // Create hourly boxplot
+        if (hourly_stats && hourly_stats.length > 0) {
+            const hourlyDiv = document.createElement('div');
+            hourlyDiv.className = 'plot-container';
+            hourlyDiv.innerHTML = '<h3 class="plot-title">Delay Distribution by Time of Day</h3><div id="hourlyPlot"></div>';
+            modalBody.appendChild(hourlyDiv);
+
+            this.createHourlyBoxplot(hourly_stats, 'hourlyPlot');
+        }
+
+        // Create daily boxplot
+        if (daily_stats && daily_stats.length > 0) {
+            const dailyDiv = document.createElement('div');
+            dailyDiv.className = 'plot-container';
+            dailyDiv.innerHTML = '<h3 class="plot-title">Delay Distribution by Day of Week</h3><div id="dailyPlot"></div>';
+            modalBody.appendChild(dailyDiv);
+
+            this.createDailyBoxplot(daily_stats, 'dailyPlot');
+        }
+    }
+
+    createHourlyBoxplot(hourly_stats, containerId) {
+        const hours = [];
+        const delays = [];
+
+        hourly_stats.forEach(stat => {
+            if (stat.count > 0 && stat.delays && stat.delays.length > 0) {
+                hours.push(`${stat.hour}:00`);
+                delays.push(stat.delays);
+            }
+        });
+
+        if (hours.length === 0) {
+            document.getElementById(containerId).innerHTML = '<div class="error-message">No data available for hourly distribution</div>';
+            return;
+        }
+
+        const traces = hours.map((hour, idx) => ({
+            y: delays[idx],
+            type: 'box',
+            name: hour,
+            boxmean: 'sd',
+            marker: { color: '#667eea' },
+            line: { width: 2 }
+        }));
+
+        const layout = {
+            title: '',
+            xaxis: { title: 'Time of Day' },
+            yaxis: { title: 'Delay (minutes)' },
+            showlegend: false,
+            height: 400,
+            margin: { l: 60, r: 30, t: 30, b: 60 }
+        };
+
+        Plotly.newPlot(containerId, traces, layout, { responsive: true });
+    }
+
+    createDailyBoxplot(daily_stats, containerId) {
+        const days = [];
+        const delays = [];
+
+        daily_stats.forEach(stat => {
+            if (stat.count > 0 && stat.delays && stat.delays.length > 0) {
+                days.push(stat.day_name);
+                delays.push(stat.delays);
+            }
+        });
+
+        if (days.length === 0) {
+            document.getElementById(containerId).innerHTML = '<div class="error-message">No data available for daily distribution</div>';
+            return;
+        }
+
+        const traces = days.map((day, idx) => ({
+            y: delays[idx],
+            type: 'box',
+            name: day,
+            boxmean: 'sd',
+            marker: { color: '#764ba2' },
+            line: { width: 2 }
+        }));
+
+        const layout = {
+            title: '',
+            xaxis: { title: 'Day of Week' },
+            yaxis: { title: 'Delay (minutes)' },
+            showlegend: false,
+            height: 400,
+            margin: { l: 60, r: 30, t: 30, b: 60 }
+        };
+
+        Plotly.newPlot(containerId, traces, layout, { responsive: true });
+    }
 }
 
 // Initialize when DOM is ready

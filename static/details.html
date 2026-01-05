@@ -402,6 +402,130 @@
         .notification-close:hover {
             color: #4b5563;
         }
+
+        /* Stats Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 95vw;
+            max-width: 1800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .modal-header h2 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            line-height: 1;
+            transition: transform 0.2s;
+        }
+
+        .modal-close:hover {
+            transform: scale(1.1);
+        }
+
+        .modal-body {
+            padding: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: #f9fafb;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-card .label {
+            font-size: 0.9rem;
+            color: #6b7280;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #111827;
+        }
+
+        .plot-container {
+            margin-bottom: 2rem;
+        }
+
+        .plot-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #111827;
+            margin-bottom: 1rem;
+        }
+
+        .error-message {
+            text-align: center;
+            padding: 2rem;
+            color: #9ca3af;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -488,6 +612,7 @@
 
             <div class="filter-actions">
                 <button class="btn btn-secondary" onclick="details.resetFilters()">Reset</button>
+                <button class="btn btn-primary" onclick="details.showStatsModal()" style="margin-right: 0.5rem;">📊 Show Stats</button>
                 <button class="btn btn-primary" onclick="details.applyFilters()">Filter</button>
             </div>
         </div>
@@ -543,6 +668,23 @@
         </div>
     </div>
 
+    <!-- Stats Modal -->
+    <div class="modal-overlay" id="statsModal" onclick="if(event.target === this) details.closeStatsModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Statistics & Distribution</h2>
+                <button class="modal-close" onclick="details.closeStatsModal()">×</button>
+            </div>
+            <div class="modal-body" id="statsModalBody">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    Loading statistics...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="/static/details.js"></script>
 </body>
 </html>
