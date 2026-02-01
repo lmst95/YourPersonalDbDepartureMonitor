@@ -198,8 +198,8 @@ class DetailsPage {
             // Render table
             this.renderTable(filteredDepartures);
 
-            // Update statistics
-            this.updateStatistics(filteredDepartures);
+            // Update statistics from server (all data, not just current page)
+            await this.updateStatisticsFromServer();
 
             // Update pagination
             this.updatePagination(data.meta);
@@ -330,6 +330,33 @@ class DetailsPage {
                 </tr>
             `;
         }).join('');
+    }
+
+    async updateStatisticsFromServer() {
+        try {
+            // Fetch stats from server for ALL matching data (not just current page)
+            const stats = await this.fetchStats();
+            const summary = stats.summary;
+
+            // Update stats bar with server-side statistics
+            document.getElementById('totalCount').textContent = summary.total_count || 0;
+            document.getElementById('avgDelay').textContent = summary.avg_delay !== null
+                ? `${summary.avg_delay.toFixed(1)} min`
+                : '-';
+            document.getElementById('maxDelay').textContent = summary.max_delay !== null
+                ? `${summary.max_delay} min`
+                : '-';
+            document.getElementById('onTimePercent').textContent = summary.ontime_rate !== null
+                ? `${summary.ontime_rate.toFixed(1)}%`
+                : '-';
+        } catch (error) {
+            console.error('Error updating statistics:', error);
+            // Show placeholder values on error
+            document.getElementById('totalCount').textContent = '-';
+            document.getElementById('avgDelay').textContent = '-';
+            document.getElementById('maxDelay').textContent = '-';
+            document.getElementById('onTimePercent').textContent = '-';
+        }
     }
 
     updateStatistics(departures) {
