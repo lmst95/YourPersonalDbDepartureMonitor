@@ -241,6 +241,45 @@ class Geocoder:
                 logger.warning(f"Geocoding failed for '{query}': {e}")
                 continue
 
+        # Fallback: If station name contains parentheses (e.g., "Metzingen(Württ)"),
+        # try again with simplified name (e.g., "Metzingen")
+        if "(" in station_name:
+            simplified_name = station_name.split("(")[0].strip()
+            logger.info(f"Geocoding fallback: Trying simplified name '{simplified_name}' for '{station_name}'")
+
+            self._rate_limit()
+
+            fallback_queries = [
+                f"{simplified_name}, {country}",
+                f"{simplified_name} Bahnhof, {country}",
+                f"Bahnhof {simplified_name}, {country}"
+            ]
+
+            for query in fallback_queries:
+                try:
+                    response = requests.get(
+                        self.NOMINATIM_URL,
+                        params={
+                            "q": query,
+                            "format": "json",
+                            "limit": 1,
+                            "countrycodes": "de"
+                        },
+                        headers={"User-Agent": self.USER_AGENT},
+                        timeout=10
+                    )
+                    response.raise_for_status()
+                    results = response.json()
+
+                    if results and len(results) > 0:
+                        lat = float(results[0]["lat"])
+                        lon = float(results[0]["lon"])
+                        logger.info(f"Geocoding succeeded with simplified name '{simplified_name}'")
+                        return (lat, lon)
+                except Exception as e:
+                    logger.warning(f"Geocoding fallback failed for '{query}': {e}")
+                    continue
+
         return None
 
 
