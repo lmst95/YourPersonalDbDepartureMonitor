@@ -683,9 +683,72 @@ class DBLiveTracker {
         const combinedDailyStats = Array.from(dailyStatsMap.values())
             .sort((a, b) => a.day - b.day);
 
+        // Combine day_hour_stats (7x24 matrix)
+        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const combinedDayHourStats = [];
+        for (let day = 0; day < 7; day++) {
+            const dayRow = [];
+            for (let hour = 0; hour < 24; hour++) {
+                // Collect delays from all data sources for this day/hour
+                const allDelays = [];
+                allStatsData.forEach(data => {
+                    if (data.day_hour_stats && data.day_hour_stats[day] && data.day_hour_stats[day][hour]) {
+                        const cell = data.day_hour_stats[day][hour];
+                        if (cell.count > 0) {
+                            // We don't have the raw delays, so we need to estimate from the available stats
+                            // For accurate combination, we'll use the median values weighted by count
+                            for (let i = 0; i < cell.count; i++) {
+                                allDelays.push(cell.median);
+                            }
+                        }
+                    }
+                });
+
+                if (allDelays.length > 0) {
+                    allDelays.sort((a, b) => a - b);
+                    const n = allDelays.length;
+                    // Calculate combined stats from all sources
+                    let minVal = Infinity, maxVal = -Infinity, sum = 0;
+                    allStatsData.forEach(data => {
+                        if (data.day_hour_stats && data.day_hour_stats[day] && data.day_hour_stats[day][hour]) {
+                            const cell = data.day_hour_stats[day][hour];
+                            if (cell.count > 0) {
+                                if (cell.min !== null && cell.min < minVal) minVal = cell.min;
+                                if (cell.max !== null && cell.max > maxVal) maxVal = cell.max;
+                                sum += (cell.mean || 0) * cell.count;
+                            }
+                        }
+                    });
+                    dayRow.push({
+                        day: day,
+                        day_name: dayNames[day],
+                        hour: hour,
+                        count: n,
+                        min: minVal === Infinity ? null : minVal,
+                        max: maxVal === -Infinity ? null : maxVal,
+                        median: allDelays[Math.floor(n / 2)],
+                        mean: Math.round((sum / n) * 10) / 10
+                    });
+                } else {
+                    dayRow.push({
+                        day: day,
+                        day_name: dayNames[day],
+                        hour: hour,
+                        count: 0,
+                        min: null,
+                        max: null,
+                        median: null,
+                        mean: null
+                    });
+                }
+            }
+            combinedDayHourStats.push(dayRow);
+        }
+
         return {
             hourly_stats: combinedHourlyStats,
-            daily_stats: combinedDailyStats
+            daily_stats: combinedDailyStats,
+            day_hour_stats: combinedDayHourStats
         };
     }
 
@@ -705,8 +768,8 @@ class DBLiveTracker {
         setTimeout(() => {
             const visibleDiv = document.querySelectorAll('.direction-content')[index];
             if (visibleDiv) {
-                // Find all Plotly divs in the visible content
-                const plotlyDivs = visibleDiv.querySelectorAll('[id^="hourlyPlot"], [id^="dailyPlot"]');
+                // Find all Plotly divs in the visible content (including heatmap)
+                const plotlyDivs = visibleDiv.querySelectorAll('[id^="hourlyPlot"], [id^="dailyPlot"], [id^="heatmap"]');
                 plotlyDivs.forEach(div => {
                     if (div && typeof Plotly !== 'undefined') {
                         Plotly.Plots.resize(div);
@@ -717,7 +780,7 @@ class DBLiveTracker {
     }
 
     renderSingleRouteStats(data, containerId) {
-        const { hourly_stats, daily_stats } = data;
+        const { hourly_stats, daily_stats, day_hour_stats } = data;
 
         // Calculate overall statistics
         const allDelays = hourly_stats.flatMap(h => h.delays).filter(d => d !== null);
@@ -776,9 +839,18 @@ class DBLiveTracker {
                     <div class="value">${onTimePercent}%</div>
                 </div>
             </div>
-            <div id="hourlyPlot${containerId}"></div>
+            <div id="heatmap${containerId}" style="margin-top: 20px;"></div>
+            <div id="hourlyPlot${containerId}" style="margin-top: 30px;"></div>
             <div id="dailyPlot${containerId}" style="margin-top: 30px;"></div>
         `;
+
+        // Create heatmap
+        if (day_hour_stats && day_hour_stats.length > 0) {
+            this.createHeatmap(day_hour_stats, `heatmap${containerId}`);
+        } else {
+            document.getElementById(`heatmap${containerId}`).innerHTML =
+                '<div class="error-message">No data available for heatmap</div>';
+        }
 
         // Create hourly boxplot with Plotly
         if (hours.length > 0) {
@@ -891,6 +963,99 @@ class DBLiveTracker {
         };
 
         Plotly.newPlot(containerId, traces, layout, config);
+    }
+
+    createHeatmap(dayHourStats, containerId) {
+        // dayHourStats is a 7x24 matrix (days x hours)
+        // Each cell has: day, day_name, hour, count, min, max, median, mean
+
+        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+
+        // Build z-values (median delays) and custom data for hover
+        const zValues = [];
+        const customData = [];
+
+        for (let day = 0; day < 7; day++) {
+            const zRow = [];
+            const customRow = [];
+            for (let hour = 0; hour < 24; hour++) {
+                const cell = dayHourStats[day][hour];
+                zRow.push(cell.median);
+                customRow.push({
+                    count: cell.count,
+                    min: cell.min,
+                    max: cell.max,
+                    median: cell.median,
+                    mean: cell.mean
+                });
+            }
+            zValues.push(zRow);
+            customData.push(customRow);
+        }
+
+        const trace = {
+            z: zValues,
+            x: hours,
+            y: dayNames,
+            type: 'heatmap',
+            colorscale: [
+                [0, '#059669'],      // 0 min - Green (on-time)
+                [0.033, '#10b981'],  // 1 min - Green
+                [0.067, '#34d399'],  // 2 min - Light green
+                [0.167, '#a3e635'],  // 5 min - Lime green
+                [0.33, '#fbbf24'],   // 10 min - Yellow
+                [0.5, '#f97316'],    // 15 min - Orange
+                [0.67, '#ef4444'],   // 20 min - Red
+                [1, '#991b1b']       // 30 min - Dark red
+            ],
+            zmin: 0,
+            zmax: 30,
+            colorbar: {
+                title: 'Median Delay (min)',
+                titleside: 'right',
+                tickvals: [0, 5, 10, 15, 20, 25, 30],
+                ticktext: ['0', '5', '10', '15', '20', '25', '30']
+            },
+            customdata: customData,
+            hovertemplate:
+                '<b>%{y} %{x}</b><br>' +
+                'Median: %{customdata.median} min<br>' +
+                'Mean: %{customdata.mean} min<br>' +
+                'Min: %{customdata.min} min<br>' +
+                'Max: %{customdata.max} min<br>' +
+                'Count: %{customdata.count}<extra></extra>',
+            showscale: true
+        };
+
+        const layout = {
+            title: {
+                text: 'Delay Heatmap (Day × Hour)',
+                font: { size: 16 }
+            },
+            xaxis: {
+                title: 'Hour of Day',
+                tickmode: 'linear',
+                dtick: 2
+            },
+            yaxis: {
+                title: 'Day of Week',
+                autorange: 'reversed'
+            },
+            height: 300,
+            margin: { t: 40, b: 60, l: 60, r: 100 },
+            paper_bgcolor: 'white',
+            autosize: true
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+        };
+
+        Plotly.newPlot(containerId, [trace], layout, config);
     }
 
     openDetailsPage() {

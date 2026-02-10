@@ -585,7 +585,7 @@ class DetailsPage {
 
     renderStats(data) {
         const modalBody = document.getElementById('statsModalBody');
-        const { hourly_stats, daily_stats, summary } = data;
+        const { hourly_stats, daily_stats, day_hour_stats, summary } = data;
 
         // Create stats summary cards
         const summaryHTML = `
@@ -614,6 +614,16 @@ class DetailsPage {
         `;
 
         modalBody.innerHTML = summaryHTML;
+
+        // Create heatmap
+        if (day_hour_stats && day_hour_stats.length > 0) {
+            const heatmapDiv = document.createElement('div');
+            heatmapDiv.className = 'plot-container';
+            heatmapDiv.innerHTML = '<h3 class="plot-title">Delay Heatmap (Day × Hour)</h3><div id="heatmapPlot"></div>';
+            modalBody.appendChild(heatmapDiv);
+
+            this.createHeatmap(day_hour_stats, 'heatmapPlot');
+        }
 
         // Create hourly boxplot
         if (hourly_stats && hourly_stats.length > 0) {
@@ -708,6 +718,96 @@ class DetailsPage {
         };
 
         Plotly.newPlot(containerId, traces, layout, { responsive: true });
+    }
+
+    createHeatmap(dayHourStats, containerId) {
+        // dayHourStats is a 7x24 matrix (days x hours)
+        // Each cell has: day, day_name, hour, count, min, max, median, mean
+
+        const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+        const hours = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+
+        // Build z-values (median delays) and custom data for hover
+        const zValues = [];
+        const customData = [];
+
+        for (let day = 0; day < 7; day++) {
+            const zRow = [];
+            const customRow = [];
+            for (let hour = 0; hour < 24; hour++) {
+                const cell = dayHourStats[day][hour];
+                zRow.push(cell.median);
+                customRow.push({
+                    count: cell.count,
+                    min: cell.min,
+                    max: cell.max,
+                    median: cell.median,
+                    mean: cell.mean
+                });
+            }
+            zValues.push(zRow);
+            customData.push(customRow);
+        }
+
+        const trace = {
+            z: zValues,
+            x: hours,
+            y: dayNames,
+            type: 'heatmap',
+            colorscale: [
+                [0, '#059669'],      // 0 min - Green (on-time)
+                [0.033, '#10b981'],  // 1 min - Green
+                [0.067, '#34d399'],  // 2 min - Light green
+                [0.167, '#a3e635'],  // 5 min - Lime green
+                [0.33, '#fbbf24'],   // 10 min - Yellow
+                [0.5, '#f97316'],    // 15 min - Orange
+                [0.67, '#ef4444'],   // 20 min - Red
+                [1, '#991b1b']       // 30 min - Dark red
+            ],
+            zmin: 0,
+            zmax: 30,
+            colorbar: {
+                title: 'Median Delay (min)',
+                titleside: 'right',
+                tickvals: [0, 5, 10, 15, 20, 25, 30],
+                ticktext: ['0', '5', '10', '15', '20', '25', '30']
+            },
+            customdata: customData,
+            hovertemplate:
+                '<b>%{y} %{x}</b><br>' +
+                'Median: %{customdata.median} min<br>' +
+                'Mean: %{customdata.mean} min<br>' +
+                'Min: %{customdata.min} min<br>' +
+                'Max: %{customdata.max} min<br>' +
+                'Count: %{customdata.count}<extra></extra>',
+            showscale: true
+        };
+
+        const layout = {
+            title: '',
+            xaxis: {
+                title: 'Hour of Day',
+                tickmode: 'linear',
+                dtick: 2
+            },
+            yaxis: {
+                title: 'Day of Week',
+                autorange: 'reversed'
+            },
+            height: 300,
+            margin: { l: 60, r: 100, t: 30, b: 60 },
+            paper_bgcolor: 'white',
+            autosize: true
+        };
+
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            displaylogo: false,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+        };
+
+        Plotly.newPlot(containerId, [trace], layout, config);
     }
 }
 

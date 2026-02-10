@@ -1,6 +1,7 @@
 # DB Live Tracker - Python Dependencies
 
 # Core web framework
+tzdata
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 

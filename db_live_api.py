@@ -404,6 +404,78 @@ def calculate_daily_stats(db: Database, route_id: int) -> List[Dict[str, Any]]:
     return stats
 
 
+def calculate_day_hour_stats(db: Database, route_id: int) -> List[List[Dict[str, Any]]]:
+    """
+    Calculate day×hour statistics for heatmap visualization.
+    Returns a 7×24 matrix (days × hours) with statistics for each cell.
+    Day of week: 0 = Monday, 1 = Tuesday, ..., 6 = Sunday
+    Hour: 0-23
+    """
+    rows = db.query_all(
+        """
+        SELECT
+            CAST(strftime('%w', planned_dt) AS INTEGER) as day_of_week,
+            CAST(strftime('%H', planned_dt) AS INTEGER) as hour,
+            delay_min
+        FROM departures
+        WHERE route_id = ? AND delay_min IS NOT NULL
+        ORDER BY day_of_week, hour
+        """,
+        (route_id,)
+    )
+
+    # Group by day and hour
+    # day_hour_data[day][hour] = list of delays
+    day_hour_data: Dict[int, Dict[int, List[int]]] = {}
+    for row in rows:
+        # Convert from SQLite format (0=Sunday) to ISO format (0=Monday)
+        sqlite_dow = row["day_of_week"]
+        iso_dow = (sqlite_dow + 6) % 7
+        hour = row["hour"]
+        delay = row["delay_min"]
+
+        if iso_dow not in day_hour_data:
+            day_hour_data[iso_dow] = {}
+        if hour not in day_hour_data[iso_dow]:
+            day_hour_data[iso_dow][hour] = []
+        day_hour_data[iso_dow][hour].append(delay)
+
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+    # Build 7×24 matrix
+    matrix = []
+    for day in range(7):
+        day_row = []
+        for hour in range(24):
+            if day in day_hour_data and hour in day_hour_data[day] and len(day_hour_data[day][hour]) > 0:
+                delays = sorted(day_hour_data[day][hour])
+                n = len(delays)
+                day_row.append({
+                    "day": day,
+                    "day_name": day_names[day],
+                    "hour": hour,
+                    "count": n,
+                    "min": min(delays),
+                    "max": max(delays),
+                    "median": delays[n // 2],
+                    "mean": round(sum(delays) / n, 1)
+                })
+            else:
+                day_row.append({
+                    "day": day,
+                    "day_name": day_names[day],
+                    "hour": hour,
+                    "count": 0,
+                    "min": None,
+                    "max": None,
+                    "median": None,
+                    "mean": None
+                })
+        matrix.append(day_row)
+
+    return matrix
+
+
 # ------------------------------ Background Polling --------------------------
 
 class BackgroundPoller:
@@ -759,7 +831,7 @@ async def get_routes():
 
 @app.get("/api/routes/{route_id}/stats")
 async def get_route_stats(route_id: int):
-    """Get hourly and daily statistics for a specific route (for boxplot visualization)."""
+    """Get hourly, daily, and day×hour statistics for a specific route (for visualization)."""
     # Check if route exists
     route = db.query_one("SELECT * FROM routes WHERE id = ?", (route_id,))
     if not route:
@@ -767,13 +839,15 @@ async def get_route_stats(route_id: int):
 
     hourly_stats = calculate_hourly_stats(db, route_id)
     daily_stats = calculate_daily_stats(db, route_id)
+    day_hour_stats = calculate_day_hour_stats(db, route_id)
 
     return {
         "route_id": route_id,
         "origin_name": route["origin_name"],
         "dest_name": route["dest_name"],
         "hourly_stats": hourly_stats,
-        "daily_stats": daily_stats
+        "daily_stats": daily_stats,
+        "day_hour_stats": day_hour_stats
     }
 
 
@@ -907,6 +981,20 @@ async def get_departures_stats(
         tuple(params)
     )
 
+    # Get day×hour statistics for heatmap
+    day_hour_rows = db.query_all(
+        f"""
+        SELECT
+            CAST(strftime('%w', planned_dt) AS INTEGER) as day_of_week,
+            CAST(strftime('%H', planned_dt) AS INTEGER) as hour,
+            delay_min
+        FROM departures
+        WHERE {where_sql} AND delay_min IS NOT NULL
+        ORDER BY day_of_week, hour
+        """,
+        tuple(params)
+    )
+
     # Get summary statistics
     summary_row = db.query_one(
         f"""
@@ -993,6 +1081,51 @@ async def get_departures_stats(
                 "mean": None
             })
 
+    # Calculate day×hour stats for heatmap
+    day_hour_data: Dict[int, Dict[int, List[int]]] = {}
+    for row in day_hour_rows:
+        sqlite_dow = row["day_of_week"]
+        iso_dow = (sqlite_dow + 6) % 7  # Convert to ISO format (0=Monday)
+        hour = row["hour"]
+        delay = row["delay_min"]
+
+        if iso_dow not in day_hour_data:
+            day_hour_data[iso_dow] = {}
+        if hour not in day_hour_data[iso_dow]:
+            day_hour_data[iso_dow][hour] = []
+        day_hour_data[iso_dow][hour].append(delay)
+
+    # Build 7×24 matrix
+    day_hour_stats = []
+    for day in range(7):
+        day_row = []
+        for hour in range(24):
+            if day in day_hour_data and hour in day_hour_data[day] and len(day_hour_data[day][hour]) > 0:
+                delays = sorted(day_hour_data[day][hour])
+                n = len(delays)
+                day_row.append({
+                    "day": day,
+                    "day_name": day_names[day],
+                    "hour": hour,
+                    "count": n,
+                    "min": min(delays),
+                    "max": max(delays),
+                    "median": delays[n // 2],
+                    "mean": round(sum(delays) / n, 1)
+                })
+            else:
+                day_row.append({
+                    "day": day,
+                    "day_name": day_names[day],
+                    "hour": hour,
+                    "count": 0,
+                    "min": None,
+                    "max": None,
+                    "median": None,
+                    "mean": None
+                })
+        day_hour_stats.append(day_row)
+
     # Calculate median delay
     all_delays = []
     for row in hourly_rows:
@@ -1011,6 +1144,7 @@ async def get_departures_stats(
     return {
         "hourly_stats": hourly_stats,
         "daily_stats": daily_stats,
+        "day_hour_stats": day_hour_stats,
         "summary": summary
     }
 
