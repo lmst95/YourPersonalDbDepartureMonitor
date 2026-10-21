@@ -547,7 +547,7 @@ class BackgroundPoller:
             logger.info("Background polling disabled")
             logger.debug("Background Polling Configuration:")
             logger.debug(f"  POLLING_ENABLED env var: {os.getenv('POLLING_ENABLED', 'not set')}")
-            logger.debug(f"  To enable: Set POLLING_ENABLED=true in .env file")
+            logger.debug("  To enable: Set POLLING_ENABLED=true in .env file")
             return
 
         if not self.routes:
@@ -639,7 +639,6 @@ class BackgroundPoller:
         logger.debug(f"[{dt.datetime.now(TZ):%Y-%m-%d %H:%M:%S}] Starting {poll_type} polling cycle...")
 
         # Import polling functions from db_live_connections
-        import sys
         sys.path.insert(0, str(Path(__file__).parent))
 
         try:
@@ -688,7 +687,7 @@ class BackgroundPoller:
 
             except StationNotFoundError as e:
                 logger.error(f"[{poll_type}] {origin_name} → {dest_name}: Station not found - {e}")
-                logger.debug(f"     Skipping this route. Please check station names in .env file")
+                logger.debug("     Skipping this route. Please check station names in .env file")
             except Exception as e:
                 import traceback
                 logger.error(f"[{poll_type}] {origin_name} → {dest_name}: Error - {e}")

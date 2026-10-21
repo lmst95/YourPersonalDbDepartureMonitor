@@ -200,7 +200,7 @@ def _get_json(url: str) -> dict:
 
         try:
             return r.json()
-        except ValueError as e:
+        except ValueError:
             logger.error(f"Invalid JSON in response from {url}: {r.text[:200]}")
             raise
 
@@ -220,7 +220,7 @@ def _get_xml(url: str) -> ET.Element:
 
         try:
             return ET.fromstring(r.content)
-        except ET.ParseError as e:
+        except ET.ParseError:
             logger.error(f"Invalid XML in response from {url}: {r.text[:200]}")
             raise
 
