@@ -1,380 +1,195 @@
-# DB Live Tracker
+# Pendelmonitor – Your Personal DB Departure Monitor
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-00a393.svg)](https://fastapi.tiangolo.com)
 
-A real-time Deutsche Bahn train tracking system with interactive map visualization. Track train departures, delays, and reliability statistics across German railway routes.
+Logs the **real** delays of the Deutsche Bahn connections you care about and shows punctuality,
+cancellations and patterns on a fast, mobile-friendly web page.
 
-> **⚠️ API Credentials Required**: This application requires Deutsche Bahn API credentials. You must sign up at [Deutsche Bahn Developer Portal](https://developers.deutschebahn.com/) to obtain your own `DB_CLIENT_ID` and `DB_API_KEY`. This software is provided under the MIT License, but usage of Deutsche Bahn's API is subject to their own terms of service.
+* Data source: DB InfraGO **OpenBoards** API (successor of the Timetables/IRIS API, which DB is phasing out)
+* Live view every 10 minutes **plus** a daily finalization with the actual (`REAL`) times
+* Gaps (server down, new route) are filled automatically up to 29 days back
+* Handles cancellations, cancelled destination stops, replacement trains, rail replacement buses,
+  relief/extra trains, coupled trains, platform changes and delay reasons
+* Departure **and** arrival punctuality per route
+* **Station monitor**: every train at the observed stations (all lines and directions), not only your routes
+* Map draws routes along their real intermediate stops
+* Public read-only web UI, configuration only on the server (`.env` + CLI `dbmon`)
 
-## Features
+> **API credentials required.** Create an app in the [DB API Marketplace](https://developers.deutschebahn.com/)
+> and subscribe it to **OpenBoards** (plan *Free*). No other subscription is needed.
 
-- **Historical Data Polling**: Continuously polls Deutsche Bahn IRIS API for past hour train data (actual delays, not estimates)
-- **Background Polling**: Built-in automatic polling within the web server (no separate processes needed!)
-- **Smart Station Caching**: Persistent cache for station lookups reduces API calls and improves performance
-- **Interactive Map**: Visualize all tracked routes on an interactive German map using Leaflet.js
-- **Statistical Analysis**: Hourly and daily boxplot statistics showing delay patterns and reliability
-- **REST API**: Full-featured FastAPI backend for data access
-- **Auto-geocoding**: Automatic station coordinate lookup using OpenStreetMap Nominatim
+## How it works
 
-## Architecture
-
-### Components
-
-1. **Polling Service** ([db_live_connections.py](db_live_connections.py))
-   - Fetches live train data from Deutsche Bahn IRIS API
-   - Stores departure information to SQLite database
-   - Supports one-time or continuous polling
-
-2. **FastAPI Backend** ([db_live_api.py](db_live_api.py))
-   - REST API for routes, departures, and statistics
-   - Auto-geocoding of station coordinates
-   - Serves interactive frontend
-
-3. **Interactive Frontend** ([static/](static/))
-   - Leaflet.js map showing all routes
-   - Hover over routes to see details
-   - Click to view hourly delay statistics (boxplots)
-
-### Database Schema
-
-**Routes Table:**
-```sql
-CREATE TABLE routes (
-    id INTEGER PRIMARY KEY,
-    origin_name TEXT NOT NULL,
-    dest_name TEXT NOT NULL,
-    origin_eva TEXT NOT NULL,
-    dest_eva TEXT NOT NULL,
-    origin_lat REAL,
-    origin_lon REAL,
-    dest_lat REAL,
-    dest_lon REAL
-);
+```
+             .env (keys, ROUTES)          dbmon (CLI, via SSH)
+                    │                            │ edits ROUTES
+                    ▼                            ▼
+ OpenBoards ──► collector ──writes──► SQLite ◄──reads (read-only)── web ──► browser
+                live every 10 min                                     no keys, GET only
+                finalize daily 03:00
 ```
 
-**Departures Table:**
-```sql
-CREATE TABLE departures (
-    id INTEGER PRIMARY KEY,
-    route_id INTEGER NOT NULL,
-    service_id TEXT NOT NULL,
-    category TEXT,
-    number TEXT,
-    planned_dt TIMESTAMP NOT NULL,
-    realtime_dt TIMESTAMP,
-    delay_min INTEGER,
-    planned_platform TEXT,
-    realtime_platform TEXT,
-    inserted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
+* **collector** – the only component with API keys and write access. Reloads `.env` automatically when it changes.
+* **web** – opens the database read-only, needs no keys, sends no requests to external services.
+* **dbmon** – adds/removes routes in `.env`, shows status, triggers a backfill.
 
-## Setup
+Design details (data model, edge cases, security): [docs/DESIGN_OPENBOARDS.md](docs/DESIGN_OPENBOARDS.md).
 
-### Prerequisites
+## Quick start (without Docker)
 
-- Python >= 3.11
-- Deutsche Bahn API credentials ([Get them here](https://developers.deutschebahn.com/))
-
-### Installation
-
-1. **Clone or download this repository**
-
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Configure API credentials:**
-
-   Create a `.env` file in the project directory:
-   ```env
-   DB_CLIENT_ID=your_client_id_here
-   DB_API_KEY=your_api_key_here
-   ```
-
-## Usage
-
-### Option A: Background Polling (Recommended - Easiest!)
-
-The simplest way to run the system is to use the built-in background polling:
-
-1. **Configure routes in `.env`:**
-   ```env
-   POLLING_ENABLED=true
-   POLLING_INTERVAL=3600
-   POLLING_ROUTES=Berlin Hbf<->Hamburg Hbf;München Hbf->Frankfurt Hbf
-   ```
-
-   **Route Format:**
-   - **Bidirectional**: `Station A<->Station B` (automatically polls both directions)
-   - **Unidirectional**: `Station A->Station B` (polls only this direction)
-   - **Multiple routes**: Separate with semicolons (`;`)
-
-2. **Start the server:**
-   ```bash
-   python db_live_api.py --db ./train_db.db --port 8080
-   ```
-
-That's it! The server will automatically poll your routes every hour and serve the web interface.
-
-See [BACKGROUND_POLLING.md](BACKGROUND_POLLING.md) for detailed configuration options.
-
-### Option B: Manual Polling (Advanced)
-
-For more control, use the separate polling service:
-
-#### 1. Collect Data (Polling Service)
-
-**Single poll (console output only):**
 ```bash
-python db_live_connections.py --from "Berlin Hbf" --to "Hamburg Hbf"
+pip install -r requirements.txt
+cp .env.example .env          # enter DB_CLIENT_ID / DB_API_KEY
+./dbmon add 8001920 8000096   # EVA numbers of start and destination (see "Finding EVA numbers")
+python3 -m dbmonitor.collector            # keeps running: live + daily finalization
+python3 -m dbmonitor.web --port 8080      # in a second terminal → http://127.0.0.1:8080
 ```
 
-**Store to database:**
+An existing database from the old version (`train_db.db`) is migrated automatically on the first collector
+start; the old table is kept as `departures_legacy`. Take the old routes over into `.env` with
+`./dbmon import-db`.
+
+## Configuration (`.env`)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DB_CLIENT_ID`, `DB_API_KEY` | – | DB API Marketplace credentials (collector and `dbmon` only) |
+| `ROUTES` | – | Routes as EVA numbers: `8001920(Esslingen)<->8000096(Stuttgart Hbf);8001920->8000302`. `<->` = both directions. Names in `()` are labels only. The legacy `POLLING_ROUTES` with station names is still read. |
+| `DB_PATH` | `./train_db.db` | SQLite file (relative to the `.env`) |
+| `LIVE_INTERVAL` | `600` | Seconds between live queries (min. 120) |
+| `FINALIZE_AT` | `03:00` | Daily finalization of the previous days |
+| `BACKFILL_DAYS` | `29` | How many past days are filled in automatically (OpenBoards keeps ~30 days) |
+| `STATIONS` | – | Extra stations observed on their own (e.g. an intermediate stop): `8006642(Esslingen-Zell);8005769`. Start and destination stations of `ROUTES` are always observed. |
+| `GEOCODING` | `nominatim` | Map coordinates of configured stations via OpenStreetMap Nominatim; `off` disables it |
+
+## `dbmon` CLI
+
+```
+dbmon routes                  configured routes with data status
+dbmon add                     interactive: name (searched locally) or EVA number for start and destination
+dbmon add 8001920 8000096     directly with EVA numbers (--one-way for one direction)
+dbmon remove                  remove routes (stored data is kept, the route is hidden in the UI)
+dbmon stations               stations observed on their own (STATIONS)
+dbmon add-station [EVA]       observe a station without a route, e.g. an intermediate stop
+dbmon remove-station          stop observing such a station (data is kept)
+dbmon search "Esslingen"      find EVA numbers in the stations already seen by the collector
+dbmon status                  last live query, finalized days, gaps, last error
+dbmon backfill --days 7       finalize missing days right now
+dbmon import-db               write the routes stored in the database into ROUTES
+```
+
+`dbmon` only changes the `ROUTES=` line, keeps everything else and writes a `.env.bak` backup.
+The collector picks up the change within 30 s.
+
+### Finding EVA numbers
+
+The EVA number (also IBNR) is the 7-digit stop number used by DB, e.g. `8000096` = Stuttgart Hbf.
+
+* `dbmon search NAME` searches every stop the collector has already seen. Each board response contains all
+  stops of the trains at your stations, so after the first run the surrounding network is known.
+* On bahn.de, search a connection and copy/share its link: the station appears as `@L=8000096@`.
+* `dbmon add` verifies a number with one OpenBoards request and fills in the name automatically.
+
+## How the real delay is captured
+
+OpenBoards filters its time window by the **best known time** (forecast or real), not by the schedule.
+A train that is 2 h late therefore stays in the "now" window until it has actually left.
+
+| Step | When | Window | Result |
+|---|---|---|---|
+| Live | every `LIVE_INTERVAL` (10 min) | departures: now −60 min … +90 min, arrivals: −60 … +180 min (by actual time) | forecast while waiting (`PREVIEW`), real time (`REAL`) as soon as the train has left/arrived |
+| Finalize | continuously for every day not finalized yet; yesterday only after `FINALIZE_AT` (03:00) | the whole day 00:00–24:00 **plus 4 h** (late trains after midnight) | final `REAL` times and cancellations, `final = 1`; live values can never overwrite them |
+| Backfill | on start, on a new route, after downtime | same as finalize, up to `BACKFILL_DAYS` back | gaps are closed automatically |
+
+Stored is everything the board returns with a planned time before the end of the window – including trains
+planned much earlier that only now appear because they are very late.
+
+Example – planned 19:00, departs 10 h late at 05:00 the next day:
+
+1. Live: as soon as its forecast moves into the window (≈ 03:30), it is shown and stored; at 05:00 it gets its
+   real time.
+2. The finalization of the planned day (03:00) cannot contain it yet (it has not left) – and does not delete it.
+3. The finalization of the **next** day (03:00 one day later) queries all actual times of that day, finds the
+   straggler and stores it as final. This costs no extra requests.
+
+Delays of up to ~24 h are covered this way. Trains that never get a real time are stored as *ohne Ist-Daten*
+and are not counted as on time.
+
+## Docker
+
 ```bash
-python db_live_connections.py \
-  --from "Berlin Hbf" \
-  --to "Hamburg Hbf" \
-  --store \
-  --db ./train_db.db
+docker compose up -d --build
+docker compose exec collector dbmon add
+docker compose logs -f collector
 ```
 
-**Continuous polling (every 5 minutes):**
-```bash
-python db_live_connections.py \
-  --from "Berlin Hbf" \
-  --to "Hamburg Hbf" \
-  --store \
-  --db ./train_db.db \
-  --interval 300
-```
+Two services from one image: `collector` (gets the `.env`) and `web` (no `.env`, read-only container).
+See [DOCKER.md](DOCKER.md) for reverse proxy, backups and upgrading from the old single container.
 
-**Multiple routes** (recommended: use a shell script):
-```bash
-#!/bin/bash
-# poll_routes.sh
+## Web UI
 
-python db_live_connections.py --from "Berlin Hbf" --to "Hamburg Hbf" --store --interval 300 &
-python db_live_connections.py --from "München Hbf" --to "Frankfurt Hbf" --store --interval 300 &
-python db_live_connections.py --from "Köln Hbf" --to "Berlin Hbf" --store --interval 300 &
+| Page | Content |
+|---|---|
+| **Strecken** `/` | route cards with punctuality, trend and next departures; search, jump-to dropdown; map along the real stops with style toggle |
+| Route `/route/{id}` | KPIs (departure + arrival), live view, heatmap, trend, distribution, reasons, problem trains, trip list |
+| **Bahnhöfe** `/stations` | all observed stations: departure/arrival punctuality, cancellations, trains per day |
+| Station `/station/{eva}` | all trains at the station: KPIs, live board (departures/arrivals), punctuality per line and direction, heatmap, trend, reasons, problem trains, routes from/to here |
+| **Vergleich** `/stats` | routes or stations side by side, sortable, with search |
 
-wait
-```
+Each observed station is queried for departures and arrivals. Station statistics use OpenBoards data only:
+the legacy data contains just the trains of the configured routes.
 
-#### 2. Start Web Server
+## Metrics
 
-**Start FastAPI server:**
-```bash
-python db_live_api.py --db ./train_db.db --host 0.0.0.0 --port 8080
-```
+* **Punctual** = less than 6 minutes late (DB definition), based on trips with real measured time.
+* **Cancellation rate** = cancelled trips + trips whose destination stop was cancelled, divided by planned trips.
+* **Traveller view** = punctuality that also counts cancellations as not on time.
+* Trips without a real time (API never delivered one) are shown as *ohne Ist-Daten* and not counted.
+* A cancelled train replaced by a replacement train counts once, with the delay of the replacement train
+  relative to the original schedule.
 
-Then open: [http://localhost:8080](http://localhost:8080)
+## Storage
 
-### 3. Production Deployment
+SQLite (one file, WAL mode: the collector writes while the web UI reads). Schema 3:
 
-**Using systemd (Linux):**
+* `stop_events` – every train at an observed station, clustered by station, kind and time (`WITHOUT ROWID`).
+  Journey ids are small integers (`journeys` maps them to the full OpenBoards id), times are Unix seconds,
+  the stop sequence is a compact list (`8001921,8006643x,8000096`).
+* `route_trips` – classified trips per route, clustered by route and time.
+* `agg_hour`, `agg_line`, `agg_cause` – daily aggregates written when a day is finalized. Long periods are
+  answered from these; today and days not finalized yet are computed from the raw rows with the same function.
 
-Create `/etc/systemd/system/db-live-poller.service`:
-```ini
-[Unit]
-Description=DB Live Train Polling Service
-After=network.target
-
-[Service]
-Type=simple
-User=your_user
-WorkingDirectory=/path/to/db_api
-Environment="DB_CLIENT_ID=your_client_id"
-Environment="DB_API_KEY=your_api_key"
-ExecStart=/usr/bin/python3 db_live_connections.py --from "Berlin Hbf" --to "Hamburg Hbf" --store --interval 300
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Create `/etc/systemd/system/db-live-api.service`:
-```ini
-[Unit]
-Description=DB Live API Server
-After=network.target
-
-[Service]
-Type=simple
-User=your_user
-WorkingDirectory=/path/to/db_api
-ExecStart=/usr/bin/python3 db_live_api.py --db /path/to/train_db.db --host 0.0.0.0 --port 8080
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
-```bash
-sudo systemctl enable db-live-poller db-live-api
-sudo systemctl start db-live-poller db-live-api
-```
-
-**Using Docker (Recommended):**
-
-The easiest way to deploy is using Docker with the provided configuration files.
-
-**Quick start with Docker Compose:**
-```bash
-# Build and start the container
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Access at http://localhost:8080
-```
-
-**Or with Docker directly:**
-```bash
-# Build the image
-docker build -t db-live-tracker .
-
-# Run with environment file
-docker run -d -p 8080:8080 \
-  --env-file .env \
-  -v $(pwd)/data:/data \
-  db-live-tracker
-```
-
-The Docker container automatically:
-- Loads credentials from `.env` file
-- Starts background polling (if enabled)
-- Persists data to mounted volume
-- Includes health checks and auto-restart
-
-**See [DOCKER.md](DOCKER.md) for complete Docker deployment guide** including:
-- Configuration options
-- Production deployment
-- Monitoring and troubleshooting
-- Backup/restore procedures
-- Reverse proxy setup
-
-## API Documentation
-
-Once the server is running, visit:
-- Interactive API docs: [http://localhost:8080/docs](http://localhost:8080/docs)
-- Alternative docs: [http://localhost:8080/redoc](http://localhost:8080/redoc)
-
-### Key Endpoints
-
-**GET /api/routes**
-- Returns all routes with coordinates
-- Auto-geocodes missing coordinates
-
-**GET /api/routes/{route_id}/stats**
-- Returns hourly statistics for a specific route
-- Includes delay distributions for boxplot visualization
-
-**GET /api/departures**
-- Query parameters:
-  - `route_id`: Filter by route
-  - `since`: Hours to look back (default: 24)
-  - `q`: Search query
-  - `limit`: Result limit (default: 1000)
-  - `offset`: Pagination offset
-
-## Frontend Usage
-
-1. **Open the map** at [http://localhost:8080](http://localhost:8080)
-2. **View routes**: All tracked routes are shown as lines on the map
-3. **Hover** over a route to highlight it
-4. **Click** on a route to see a popup with basic information
-5. **Click "Statistik anzeigen"** to open detailed hourly statistics with boxplots
+Older databases are migrated automatically on collector start. The migration builds the new tables next to the
+old ones, converts every row back and compares it with the original, and swaps the tables only if nothing
+differs. Expect roughly 5–6 GB per year with ~15 major hubs.
 
 ## Development
 
-### Project Structure
-
-```
-db_api/
-├── db_live_connections.py  # Polling service
-├── db_live_api.py          # FastAPI server with background polling
-├── requirements.txt        # Python dependencies
-├── .env                    # API credentials (create this)
-├── .gitignore             # Git ignore rules
-├── static/                # Frontend files
-│   ├── index.html         # Main HTML with map interface
-│   ├── details.html       # Departure details page
-│   ├── app.js             # Map application JavaScript
-│   └── details.js         # Details page JavaScript
-└── train_db.db            # SQLite database (created automatically)
+```bash
+python3 -m unittest discover -s tests -v       # classification, migration and config tests
+python3 experiments/openboards/openboards_client.py probe --origin 8000105 --dest 8000244
 ```
 
-### Adding New Features
-
-**Custom statistics:**
-Edit `calculate_hourly_stats()` in [db_live_api.py](db_live_api.py:127)
-
-**Map customization:**
-Edit styles in [static/index.html](static/index.html)
-
-**Different visualizations:**
-Modify `createBoxplot()` in [static/app.js](static/app.js)
-
-## Troubleshooting
-
-### "Missing environment variables DB_CLIENT_ID / DB_API_KEY"
-- Create a `.env` file with your credentials
-- Or set environment variables: `export DB_CLIENT_ID=...`
-
-### "No routes visible on map"
-- Ensure you've collected data first using the polling service
-- Check database: `sqlite3 train_db.db "SELECT * FROM routes;"`
-- Coordinates are auto-geocoded on first API request (may take time)
-
-### "Geocoding failed"
-- Nominatim has rate limits (1 request/second)
-- Server will automatically retry and cache results
-- For many routes, consider pre-populating coordinates
-
-### "CORS errors in browser"
-- FastAPI has CORS enabled by default for development
-- For production, configure CORS middleware properly
+```
+dbmonitor/
+  openboards.py   OpenBoards client (window splitting, retries, rate limit)
+  stations.py     local station search, Nominatim coordinates (stations and intermediate stops)
+  config.py       .env parsing/writing (ROUTES)
+  storage.py      schema 3, compact encodings, upserts, route + station classification, aggregates, route geometry
+  migrate.py      legacy -> schema 2 -> schema 3 (lossless, self-checking)
+  collector.py    live tick, daily finalization, backfill, geocoding
+  cli.py          dbmon
+  web.py          read-only FastAPI app + aggregated JSON API
+static/           pages (index, route, stations, station, stats, privacy), css, js, vendor (Leaflet, Chart.js)
+```
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT – see [LICENSE](LICENSE).
 
-### Third-Party Services & Data
-
-**Important Disclaimers:**
-
-- **Deutsche Bahn API**: This software requires access to the Deutsche Bahn IRIS API. You must obtain your own API credentials from [Deutsche Bahn Developer Portal](https://developers.deutschebahn.com/) and comply with their terms of service. The data retrieved from the API remains the property of Deutsche Bahn AG.
-
-- **OpenStreetMap Data**: Geocoding services use OpenStreetMap Nominatim, subject to [OSM's usage policy](https://operations.osmfoundation.org/policies/nominatim/).
-
-- **No Warranty**: This software is provided "as is" without warranty of any kind. The authors are not responsible for any issues arising from the use of this software or third-party APIs.
-
-### Open Source Dependencies
-
-This project uses the following open-source libraries:
-
-- **FastAPI** (MIT License) - Modern Python web framework
-- **Uvicorn** (BSD-3-Clause License) - ASGI server
-- **Requests** (Apache 2.0 License) - HTTP library
-- **Leaflet.js** (BSD-2-Clause License) - Interactive maps
-- **Plotly.js** (MIT License) - Statistical visualizations
-
-All dependencies maintain licenses compatible with the MIT License.
-
-## Credits
-
-- **Deutsche Bahn**: For providing the IRIS API
-- **OpenStreetMap Contributors**: For geocoding data
-- **Open Source Community**: For the excellent libraries used in this project
-
-## Support
-
-For issues or questions, please open an issue on the project repository.
-
-**Note**: For API access issues, rate limits, or data-related questions, please contact Deutsche Bahn support directly.
+* **Deutsche Bahn data**: requires your own API credentials; usage is subject to the terms of the
+  DB API Marketplace. The data remains the property of Deutsche Bahn / DB InfraGO.
+* **OpenStreetMap**: map tiles and Nominatim geocoding are subject to the OSMF usage policies.
+* Bundled libraries: Leaflet (BSD-2-Clause), Chart.js (MIT). Python: FastAPI (MIT), Uvicorn (BSD-3-Clause), Requests (Apache 2.0).
+* No warranty. For API access questions contact the DB API Marketplace.

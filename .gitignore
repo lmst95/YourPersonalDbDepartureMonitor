@@ -1,5 +1,7 @@
 # Environment variables
 .env
+.env.*
+!.env.example
 
 # Python
 __pycache__/
@@ -30,3 +32,5 @@ ENV/
 .DS_Store
 Thumbs.db
 .claude/
+# OpenBoards experiment output
+experiments/openboards/out/

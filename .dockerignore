@@ -46,3 +46,10 @@ Thumbs.db
 test_*.py
 *_test.py
 tests/
+
+# Not needed in the image
+experiments/
+docs/
+.env
+.env.*
+!.env.example

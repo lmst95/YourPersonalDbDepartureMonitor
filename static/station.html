@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Pendelmonitor – Bahnhof</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="/"><img src="/static/img/favicon.svg" alt="" width="28" height="28">Pendelmonitor</a>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/">Strecken</a>
+    <a href="/stations" aria-current="page">Bahnhöfe</a>
+    <a href="/stats">Vergleich</a>
+  </nav>
+  <div class="updated" id="updated" aria-live="polite"></div>
+</div></header>
+<main>
+  <div class="page-head">
+    <div class="grow">
+      <a class="crumb" href="/stations">← Alle Bahnhöfe</a>
+      <h1 id="title"><span class="skeleton" style="min-height:1.4em;width:10em;display:inline-block"></span></h1>
+      <p class="muted small" id="period-label" style="margin:4px 0 0"></p>
+    </div>
+    <div class="segmented" role="group" aria-label="Abfahrten oder Ankünfte" id="kind">
+      <button type="button" data-kind="dep" aria-pressed="true">Abfahrten</button>
+      <button type="button" data-kind="arr" aria-pressed="false">Ankünfte</button>
+    </div>
+  </div>
+  <div class="chips" id="periods" role="group" aria-label="Zeitraum"></div>
+  <form class="daterange hidden" id="daterange">
+    <label>Von<input class="input" type="date" name="from" required></label>
+    <label>Bis<input class="input" type="date" name="to" required></label>
+    <button class="btn" type="submit">Anwenden</button>
+  </form>
+
+  <section class="section" aria-labelledby="h-kpi"><h2 id="h-kpi" class="sr-only">Kennzahlen</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <div class="grid-2 section">
+    <section class="card" aria-labelledby="h-board">
+      <header class="card-pad" style="padding-bottom:6px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 id="h-board">Live-Tafel</h2><span class="muted small" id="board-hint">alle Züge · aktualisiert automatisch</span></header>
+      <ul class="rows" id="board"><li class="empty">Lade…</li></ul>
+    </section>
+    <section class="card card-pad" aria-labelledby="h-lines">
+      <h2 id="h-lines">Nach Linie und Richtung</h2>
+      <p class="muted small" style="margin:4px 0 12px" id="lines-hint">Pünktlichkeit je Linie und Ziel (mind. 5 Fahrten).</p>
+      <ul class="bars" id="lines"></ul>
+    </section>
+  </div>
+
+  <div class="grid-2 section">
+    <section class="card card-pad" aria-labelledby="h-heat">
+      <h2 id="h-heat">Wann ist es am schlimmsten?</h2>
+      <p class="muted small" style="margin:4px 0 10px">Pünktlichkeit nach Wochentag und Stunde. Feld antippen für Details.</p>
+      <div class="heat-wrap"><div class="heat" id="heat"></div></div>
+      <div class="legend"><span>schlecht</span><span class="scale"></span><span>gut</span><span>· grau = keine Fahrten</span></div>
+      <div class="heat-info" id="heat-info" aria-live="polite"></div>
+    </section>
+    <section class="card card-pad" aria-labelledby="h-dist">
+      <h2 id="h-dist" style="margin-bottom:10px">Verteilung</h2>
+      <div class="dist" id="dist"></div>
+      <div class="dist-legend" id="dist-legend"></div>
+      <h2 style="margin:20px 0 10px">Häufigste Gründe</h2>
+      <ul class="bars" id="causes"></ul>
+    </section>
+  </div>
+
+  <section class="section card card-pad" aria-labelledby="h-trend">
+    <header style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px"><h2 id="h-trend">Verlauf</h2><span class="muted small" id="trend-hint"></span></header>
+    <div class="chart-box"><canvas id="trend" aria-label="Verlauf der Pünktlichkeit" role="img"></canvas></div>
+  </section>
+
+  <section class="section card card-pad" aria-labelledby="h-trains">
+    <h2 id="h-trains">Problemzüge</h2>
+    <p class="muted small" style="margin:4px 0 12px">Züge mit dem höchsten Anteil verspäteter oder ausgefallener Halte hier (mind. 5 Fahrten).</p>
+    <ul class="bars" id="trains"></ul>
+  </section>
+
+  <section class="section hidden" aria-labelledby="h-routes" id="routes-section">
+    <h2 id="h-routes" style="margin-bottom:10px">Strecken ab und nach hier</h2>
+    <div class="card"><ul class="cmp simple" id="routes"></ul></div>
+  </section>
+  <p class="muted small" id="note"></p>
+</main>
+<footer class="site"><span>Daten: DB InfraGO OpenBoards</span><a href="/datenschutz">Datenschutz</a><a href="https://github.com/lmst95/YourPersonalDbDepartureMonitor" rel="noopener">Quellcode</a></footer>
+<nav class="bottomnav" aria-label="Navigation">
+  <a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>Strecken</a>
+  <a href="/stations" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6"/></svg>Bahnhöfe</a>
+  <a href="/stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Vergleich</a>
+</nav>
+<script src="/static/vendor/chart.umd.js"></script>
+<script type="module" src="/static/js/pages/station.js"></script>
+</body>
+</html>

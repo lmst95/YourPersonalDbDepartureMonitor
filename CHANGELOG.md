@@ -1,6 +1,37 @@
 # Changelog
 
-All notable changes to the DB Live Tracker project.
+All notable changes to the DB Live Tracker / Pendelmonitor project.
+
+## [3.0.0] - 2026-11-20
+
+Switch from the Timetables/IRIS API (being phased out by DB) to **OpenBoards**, new data model and new UI.
+
+### Added
+- OpenBoards client with automatic window splitting, retries and rate limiting
+- Separate **collector** process: live queries every 10 min, daily finalization with real times, automatic backfill of gaps (up to 29 days)
+- Edge cases: cancellations, cancelled destination stops (partial), replacement trains (delay measured against the original schedule), rail replacement buses (SEV), relief/extra trains, cancelled additional stops, coupled trains, missing real times, platform changes, delay reasons (RIS cause codes)
+- Very late trains (up to ~24 h) are kept and finalized with the following day's board
+- Storage schema 3: integer journey ids, Unix times, compact stop lists, tables clustered by station/route and time, daily aggregates; lossless self-checking migration (−61 % size on real data, identical KPIs)
+- Station monitor: stations page, station detail (all trains, per line and direction, live departures/arrivals), comparison tab for stations, `STATIONS` + `dbmon add-station`
+- Map follows the typical stop sequence of each route (intermediate stops geocoded with a plausibility check)
+- Open days (new stations, downtime) are finalized right away instead of waiting for the next `FINALIZE_AT`
+- `.env.example`: optional preset of 17 main-line connections between major hubs
+- Overview: route search (also filters/zooms the map), jump-to-route dropdown, map style toggle (Standard / Grau / Dunkel)
+- Arrival punctuality at the destination
+- Station groups via `stada` (e.g. Stuttgart Hbf and Stuttgart Hbf (tief))
+- CLI `dbmon` to manage `ROUTES` in `.env` on the server (local station search from collected data, EVA numbers verified via OpenBoards)
+- New responsive UI (overview with map, route page with live view, heatmap, trend, distribution, reasons, problem trains, trip list; station page; comparison page), dark mode, self-hosted Leaflet and Chart.js
+- Unit tests for classification, migration and configuration
+
+### Changed
+- Every train is stored once per observed station; routes are derived from the stored journey path (no duplicates across routes)
+- Web UI is strictly read-only: read-only DB connection, no API keys, GET only, no API docs, no CORS, CSP and security headers, no external calls triggered by requests
+- Configuration only via `.env` (`ROUTES` with EVA numbers); legacy `POLLING_ROUTES` still accepted
+- Docker: two services (`collector`, `web`), unprivileged, read-only containers
+
+### Removed
+- `db_live_api.py`, `db_live_connections.py`, Plotly, the old pages, `POLLING_ENABLED`/`POLLING_INTERVAL`/`DELAYED_POLLING_*`
+- Automatic migration keeps the old data (`departures_legacy`); trips without real time are no longer counted as on time
 
 ## [2.0.0] - 2026-01-03
 

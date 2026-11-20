@@ -1,20 +1,36 @@
+# Two services from one image:
+#   collector – has the API keys (.env) and write access, fetches OpenBoards data
+#   web       – public, read-only UI; gets neither .env nor keys
+#
+# Configure routes on the server:  docker compose exec collector dbmon add
 services:
-  db-live-tracker:
+  collector:
     build: .
-    container_name: db-live-tracker
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
+    command: ["python", "-m", "dbmonitor.collector", "--env", "/config/.env", "--db", "/data/train_db.db"]
     volumes:
       - db-data:/data
+      - ./.env:/config/.env          # read + written by dbmon; reloaded automatically
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+      disable: true
+
+  web:
+    build: .
+    command: ["python", "-m", "dbmonitor.web", "--db", "/data/train_db.db", "--host", "0.0.0.0", "--port", "8080"]
+    ports:
+      - "8080:8080"                  # behind a reverse proxy: "127.0.0.1:8080:8080"
+    volumes:
+      - db-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    depends_on: [collector]
+    restart: unless-stopped
 
 volumes:
   db-data:

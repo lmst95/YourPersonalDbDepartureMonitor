@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# dbmon – route configuration and collector status. See: dbmon --help
+DIR="$(cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")" && pwd)"
+PYTHONPATH="$DIR${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m dbmonitor.cli "$@"
