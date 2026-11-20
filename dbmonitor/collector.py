@@ -96,10 +96,13 @@ class Collector:
         for err in self.settings.route_errors:
             log.error("Konfiguration: %s", err)
         wanted: Set[Tuple[str, str]] = set()
+        unresolved = 0
         for spec in self.settings.routes:
             o, d = self.resolve(spec.origin), self.resolve(spec.dest)
             if o and d:
                 wanted.add((o, d))
+            else:
+                unresolved += 1
         if self.settings.routes and not wanted:
             log.error("Keine der konfigurierten Strecken konnte aufgelöst werden – ändere nichts.")
             return []
@@ -113,7 +116,13 @@ class Collector:
             elif not r["active"]:
                 c.execute("UPDATE routes SET active = 1 WHERE id = ?", (r["id"],))
                 activated.append(r["id"])
+        if unresolved or self.settings.route_errors:
+            log.warning("%d Strecke(n) aus der .env nicht auflösbar – bestehende Strecken werden daher nicht "
+                        "ausgeblendet. Bitte EVA-Nummern eintragen (dbmon add / dbmon import-db).",
+                        unresolved or len(self.settings.route_errors))
         for key, r in existing.items():
+            if unresolved or self.settings.route_errors:
+                break
             if key not in wanted and r["active"]:
                 c.execute("UPDATE routes SET active = 0 WHERE id = ?", (r["id"],))
                 log.info("Strecke %s -> %s deaktiviert (Daten bleiben erhalten)", *key)

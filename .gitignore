@@ -34,3 +34,6 @@ Thumbs.db
 .claude/
 # OpenBoards experiment output
 experiments/openboards/out/
+
+# local draft of the commit message
+COMMIT_MSG.txt

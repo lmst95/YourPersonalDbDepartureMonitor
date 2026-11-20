@@ -25,15 +25,53 @@ Open http://localhost:8080.
 user, make it writable for uid 1000 or edit `ROUTES` on the host; the collector reloads the file
 automatically either way.
 
-## Upgrading from the single-container version (≤ 2.x)
+## Upgrading an existing installation (≤ 2.x, single container `db-live-tracker`)
 
-1. `git pull`, then `docker compose up -d --build`. The old container `db-live-tracker` is replaced; the
-   volume `db-data` (and with it `train_db.db`) is kept.
-2. On the first start the collector migrates the database (old table kept as `departures_legacy`).
-3. `docker compose exec collector dbmon import-db` writes the existing routes into `ROUTES` in `.env`.
-   Remove the old `POLLING_*` / `DELAYED_POLLING_*` variables – they are no longer used.
-4. The collector then re-fetches the last 29 days from OpenBoards (≈ 30 minutes for 20 routes) and
-   replaces the old IRIS data for that period.
+The database is migrated automatically on the first start of the new collector (old IRIS data → schema 3).
+The migration checks every row and changes nothing if anything differs; the original legacy table is kept
+as `departures_legacy`. Still, take a backup first.
+
+1. **Subscribe OpenBoards.** In the DB API Marketplace, subscribe the existing app to *OpenBoards* (plan Free).
+   The credentials in `.env` stay the same.
+2. **Stop the old container and back up the database:**
+   ```bash
+   docker compose stop
+   docker cp db-live-tracker:/data/train_db.db ./train_db.backup.db
+   ```
+3. **Update the code** (stay in the same directory – the volume name depends on it):
+   ```bash
+   git pull
+   ```
+4. **Prepare `.env`:**
+   - Comment out `POLLING_ROUTES` (and remove `POLLING_ENABLED`, `POLLING_INTERVAL`, `DELAYED_POLLING_*`).
+     The routes are taken from the database and written to `ROUTES` in step 6.
+   - The collector writes `.env` as uid 1000 (`dbmon add`, `import-db`). On Linux, if your user has another uid:
+     `sudo chown 1000 .env` (keep the mode at 600), or edit `ROUTES` on the host instead.
+5. **Start the new stack** (removes the old single container, keeps the volume):
+   ```bash
+   docker compose up -d --build --remove-orphans
+   docker compose logs -f collector   # wait for "Umbau fertig … keine Abweichung"
+   ```
+6. **Take the routes over into `.env`:**
+   ```bash
+   docker compose exec collector dbmon import-db
+   docker compose exec collector dbmon status
+   ```
+7. The collector now fetches the last 29 days from OpenBoards (≈ 30 min for 20 routes, ≈ 2 h with the
+   main-line preset) and replaces the old IRIS data of that period. The web UI is usable right away.
+
+**Rollback:** `docker compose down`, check out the previous version (`git checkout <old commit>`), copy
+`train_db.backup.db` back into the volume as `train_db.db`, start the old version.
+
+### Without Docker
+
+```bash
+git pull && pip install -r requirements.txt
+cp train_db.db train_db.backup.db
+python3 -m dbmonitor.collector          # migrates on first start, then keeps running
+./dbmon import-db                       # in a second shell, once the migration is done
+python3 -m dbmonitor.web --port 8080    # e.g. as systemd services, see README
+```
 
 ## Behind a reverse proxy (recommended for public access)
 
