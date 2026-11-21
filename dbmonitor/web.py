@@ -24,8 +24,10 @@ import time
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from collections import OrderedDict
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
+import anyio
 from fastapi import FastAPI, HTTPException, Path as PathParam, Query, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -48,16 +50,17 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 
 LIVE_API = re.compile(r"^/api/(health|live)$|/(live|board|trips)$")  # never cached by the browser
 
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """At most WEB_THREADS (8) requests are computed at the same time instead of 40: bounds memory and CPU on
+    small servers."""
+    anyio.to_thread.current_default_thread_limiter().total_tokens = int(os.environ.get("WEB_THREADS", "8"))
+    yield
+
+
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=6)  # 9 costs much CPU for little gain
-
-
-@app.on_event("startup")
-async def limit_threads() -> None:
-    """At most 8 requests are computed at the same time (default 40): bounds memory and CPU on small servers."""
-    import anyio
-    anyio.to_thread.current_default_thread_limiter().total_tokens = int(os.environ.get("WEB_THREADS", "8"))
 
 
 # ------------------------------------------------------------------ middleware
