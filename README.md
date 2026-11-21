@@ -57,7 +57,7 @@ start; the old table is kept as `departures_legacy`. Take the old routes over in
 | `DB_CLIENT_ID`, `DB_API_KEY` | – | DB API Marketplace credentials (collector and `dbmon` only) |
 | `ROUTES` | – | Routes as EVA numbers: `8001920(Esslingen)<->8000096(Stuttgart Hbf);8001920->8000302`. `<->` = both directions. Names in `()` are labels only. The legacy `POLLING_ROUTES` with station names is still read. |
 | `DB_PATH` | `./train_db.db` | SQLite file (relative to the `.env`) |
-| `LIVE_INTERVAL` | `600` | Seconds between live queries (min. 120) |
+| `LIVE_INTERVAL` | `600` | Seconds between live queries (min. 60). Below 600 s most runs fetch only −15 … +45 min (arrivals +75 min), the full window every 10 min |
 | `FINALIZE_AT` | `03:00` | Daily finalization of the previous days |
 | `BACKFILL_DAYS` | `29` | How many past days are filled in automatically (OpenBoards keeps ~30 days) |
 | `STATIONS` | – | Extra stations observed on their own (e.g. an intermediate stop): `8006642(Esslingen-Zell);8005769`. Start and destination stations of `ROUTES` are always observed. |

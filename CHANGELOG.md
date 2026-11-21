@@ -21,6 +21,8 @@ All notable changes to the DB Live Tracker / Pendelmonitor project.
 - The workbench script is called `werkbank.js`: ad blockers (EasyPrivacy) block scripts named `analyse.js`
 - Own JS/CSS is revalidated on every load (`Cache-Control: no-cache` + ETag), so an update shows immediately
 
+- `LIVE_INTERVAL` may be as low as 60 s: runs in between only fetch a small window around now (about one request per board), the full window every 10 min; the collector wakes up in time for the next run
+
 ### Added
 - Analysis workbench `/analyse` for a route or station: filters for weekdays, hours and lines (kept in the URL), views per hour, weekday, heatmap, distribution, train and single trip; "In der Analyse öffnen" in the cockpit carries the selection over
 - `GET /api/stations/{eva}/samples`, `GET /api/compare/hourly`, `GET /api/catalog`; `/api/overview` now includes quantiles and the worst hour per route

@@ -548,3 +548,34 @@ class PerformanceHelpersTest(unittest.TestCase):
             t.join()
         self.assertEqual(len(calls), 1)
         w._cache.clear()
+
+
+class LiveWindowTest(unittest.TestCase):
+    """LIVE_INTERVAL below 10 min: small window in between, the full window every 10 minutes."""
+
+    def test_short_and_full_windows(self):
+        from types import SimpleNamespace
+        from dbmonitor.collector import Collector, LIVE_FULL_EVERY
+        col = Collector.__new__(Collector)
+        col.settings = SimpleNamespace(live_interval=60)
+        col.client = SimpleNamespace(request_count=0)
+        col.conn = storage.connect(":memory:")
+        storage.init_db(col.conn)
+        col.last_full_live = None
+        col.boards = lambda: [(ORIGIN, "dep"), (DEST, "arr")]
+        spans = []
+        col.sync_board = lambda eva, kind, a, b, ks, ke, final: spans.append((kind, (b - a).total_seconds() / 60)) or 0
+        col.live_tick()
+        self.assertEqual(spans, [("dep", 150), ("arr", 240)])          # first run: full window
+        spans.clear()
+        col.live_tick()
+        self.assertEqual(spans, [("dep", 60), ("arr", 90)])            # then the small one
+        spans.clear()
+        col.last_full_live -= LIVE_FULL_EVERY
+        col.live_tick()
+        self.assertEqual(spans, [("dep", 150), ("arr", 240)])          # every 10 min the full one again
+        col.settings.live_interval = 600
+        spans.clear()
+        col.live_tick()
+        self.assertEqual(spans, [("dep", 150), ("arr", 240)])          # default interval: always full
+        col.conn.close()

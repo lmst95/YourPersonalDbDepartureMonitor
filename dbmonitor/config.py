@@ -240,7 +240,7 @@ def load_settings(env_path: Optional[Path] = None) -> Settings:
     db_path = os.environ.get("DB_PATH") or file_vals.get("DB_PATH") or s.db_path
     s.db_path = str((path.parent / db_path).resolve()) if not os.path.isabs(db_path) else db_path
     try:
-        s.live_interval = max(120, int(get("LIVE_INTERVAL", "600")))
+        s.live_interval = max(60, int(get("LIVE_INTERVAL", "600")))
     except ValueError:
         s.route_errors.append("LIVE_INTERVAL ist keine Zahl, verwende 600")
     try:

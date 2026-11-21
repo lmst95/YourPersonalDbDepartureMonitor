@@ -30,6 +30,12 @@ log = logging.getLogger("dbmonitor.collector")
 LIVE_BACK = dt.timedelta(minutes=60)
 LIVE_AHEAD_DEP = dt.timedelta(minutes=90)
 LIVE_AHEAD_ARR = dt.timedelta(minutes=180)
+# With a short LIVE_INTERVAL most runs only look at a small window around "now" (one request per board
+# instead of two or more); the full window above is still fetched every LIVE_FULL_EVERY.
+LIVE_FULL_EVERY = dt.timedelta(minutes=10)
+SHORT_BACK = dt.timedelta(minutes=15)
+SHORT_AHEAD_DEP = dt.timedelta(minutes=45)
+SHORT_AHEAD_ARR = dt.timedelta(minutes=75)
 LATE_MARGIN = dt.timedelta(hours=4)     # board windows filter on actual time -> fetch longer
 MAX_TRAVEL = dt.timedelta(hours=8)      # arrivals affect departures up to this much earlier
 
@@ -48,6 +54,7 @@ class Collector:
         self.client = OpenBoardsClient(self.settings.client_id, self.settings.api_key)
         self.nominatim = Nominatim()
         self.next_live = 0.0
+        self.last_full_live: Optional[dt.datetime] = None
         self.stop = False
 
     # ------------------------------------------------------------ config
@@ -201,18 +208,29 @@ class Collector:
 
     def live_tick(self) -> None:
         now = dt.datetime.now(TZ).replace(microsecond=0)
+        full = (self.settings.live_interval >= LIVE_FULL_EVERY.total_seconds() or self.last_full_live is None
+                or now - self.last_full_live >= LIVE_FULL_EVERY - dt.timedelta(seconds=30))
+        before = self.client.request_count
         n = 0
         for eva, kind in self.boards():
-            ahead = LIVE_AHEAD_DEP if kind == "dep" else LIVE_AHEAD_ARR
             try:
-                n += self.sync_board(eva, kind, now - LIVE_BACK, now + ahead,
-                                     now - LIVE_BACK - LATE_MARGIN, now + ahead, final=False)
+                if full:
+                    ahead = LIVE_AHEAD_DEP if kind == "dep" else LIVE_AHEAD_ARR
+                    n += self.sync_board(eva, kind, now - LIVE_BACK, now + ahead,
+                                         now - LIVE_BACK - LATE_MARGIN, now + ahead, final=False)
+                else:  # small window: what the live board shows; late trains still appear by actual time
+                    ahead = SHORT_AHEAD_DEP if kind == "dep" else SHORT_AHEAD_ARR
+                    n += self.sync_board(eva, kind, now - SHORT_BACK, now + ahead,
+                                         now - SHORT_BACK, now + ahead, final=False)
             except Exception as e:  # keep going with the other boards
                 log.exception("Live-Abfrage %s %s fehlgeschlagen", kind, eva)
                 storage.set_state(self.conn, "last_error", f"{now:%d.%m. %H:%M} live {kind} {eva}: {e}")
         storage.set_state(self.conn, "last_live", now.isoformat(timespec="seconds"))
         storage.set_state(self.conn, "last_data_update", now.isoformat(timespec="seconds"))
-        log.info("Live: %d Halte aktualisiert, %d Requests gesamt", n, self.client.request_count)
+        if full:
+            self.last_full_live = now
+        log.info("Live (%s): %d Halte aktualisiert, %d Requests, %d gesamt", "voll" if full else "kurz", n,
+                 self.client.request_count - before, self.client.request_count)
 
     def pending_days(self) -> List[Tuple[str, str, dt.date]]:
         """Board-days not finalized yet, newest first. Yesterday only after FINALIZE_AT, so that late
@@ -331,7 +349,8 @@ class Collector:
             except Exception as e:
                 log.exception("Fehler im Collector-Durchlauf")
                 storage.set_state(self.conn, "last_error", f"{dt.datetime.now(TZ):%d.%m. %H:%M}: {e}")
-            for _ in range(30):
+            # wake up in time for the next live run (LIVE_INTERVAL may be as short as 60 s)
+            for _ in range(int(max(1, min(30, self.next_live - time.time())))):
                 if self.stop:
                     break
                 time.sleep(1)
