@@ -11,7 +11,15 @@ All notable changes to the DB Live Tracker / Pendelmonitor project.
 - Calendar of daily punctuality (click selects the day); the full trip list moved into a collapsible section
 - Live data moved out of the analysis pages: new page `/live` in the look of station displays (blue, white lines, "ca. +5" chips, running text, "über …" line) with departure board, platform display and the next trains of the routes starting there; route and station pages only link to it
 
+- Station page uses the same cockpit (departures or arrivals, timetable with direction) plus sortable tables per line/direction and for the routes starting or ending there
+- Start page: routes as a sortable table (punctuality, median, 90 % value, mini boxplot, cancellations, 30-day sparkline, worst hour, next trains), map below
+- Comparison page: matrix route × departure hour (punctuality, median or 90 % value; click an hour to sort by it), daily profile per route on the same scale, sortable KPI table; stations as sortable table
+- Stations list as sortable table
+- Own JS/CSS is revalidated on every load (`Cache-Control: no-cache` + ETag), so an update shows immediately
+
 ### Added
+- Analysis workbench `/analyse` for a route or station: filters for weekdays, hours and lines (kept in the URL), views per hour, weekday, heatmap, distribution, train and single trip; "In der Analyse öffnen" in the cockpit carries the selection over
+- `GET /api/stations/{eva}/samples`, `GET /api/compare/hourly`, `GET /api/catalog`; `/api/overview` now includes quantiles and the worst hour per route
 - `GET /api/routes/{id}/samples`: all trips of a period in compact form (counting rules as in the aggregates) for quantiles of any selection
 - `GET /api/live`: board with next stops and route flag plus the next trains per route, in one request
 - Gzip compression for API responses

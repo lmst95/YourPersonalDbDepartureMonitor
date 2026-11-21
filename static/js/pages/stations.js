@@ -1,23 +1,9 @@
-import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, pctColor, sparkline, setUpdated,
+import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, sparkline, setUpdated,
   textMatches, dateLong, $ } from "../ui.js";
+import { pill, sortTable } from "../cockpit.js";
 
 const p0 = getParams();
 const state = { period: p0.period || "7d", q: p0.q || "", data: null };
-
-function row(s) {
-  const d = s.dep, a = s.arr;
-  return `<li><a href="/station/${encodeURIComponent(s.eva)}?period=${encodeURIComponent(state.period)}">
-    <span class="name">${esc(s.name)}${s.routes ? "" : ' <span class="flag">nur Bahnhof</span>'}</span>
-    <span class="badge" style="background:${pctColor(d.punctuality)};color:#111;justify-self:end" title="Pünktlich ab">${pct(d.punctuality)}</span>
-    <span class="vals">
-      <span><span class="lbl">Ankunft </span><b>${pct(a.punctuality)}</b></span>
-      <span><span class="lbl">Ø </span><b>${mins(d.avg_delay)}</b></span>
-      <span><span class="lbl">Ausfälle </span><b>${pct(d.cancel_rate)}</b></span>
-      <span><span class="lbl">Züge/Tag </span><b>${num(s.per_day)}</b></span>
-    </span>
-    <span class="spark-cell" aria-hidden="true">${sparkline(s.spark || [], { w: 110, h: 28 })}</span>
-  </a></li>`;
-}
 
 function render() {
   const all = state.data.stations;
@@ -25,10 +11,20 @@ function render() {
   $("#count").textContent = state.q ? `${rows.length} von ${all.length} Bahnhöfen` : "";
   $("#jump").innerHTML = `<option value="">Direkt zu Bahnhof …</option>` + all
     .map((s) => `<option value="${esc(s.eva)}">${esc(s.name)} (${pct(s.dep.punctuality)})</option>`).join("");
-  const head = `<li class="head" aria-hidden="true"><span>Bahnhof</span><span>Pünktlich ab</span><span>Pünktlich an</span><span>Ø Verspätung</span><span>Ausfälle</span><span>Züge/Tag</span><span>30 Tage</span></li>`;
-  $("#list").innerHTML = !all.length
-    ? `<li class="empty">Noch keine Bahnhöfe beobachtet.</li>`
-    : rows.length ? head + rows.map(row).join("") : `<li class="empty">Kein Bahnhof passt zu „${esc(state.q)}“.</li>`;
+  if (!all.length) { $("#list").innerHTML = `<p class="empty">Noch keine Bahnhöfe beobachtet.</p>`; return; }
+  sortTable($("#list"), {
+    rows, key: "p", dir: "asc", empty: `Kein Bahnhof passt zu „${state.q}“.`,
+    cols: [
+      { key: "name", label: "Bahnhof", render: (s) => `<a class="rname" href="/station/${encodeURIComponent(s.eva)}?period=${encodeURIComponent(state.period)}">${esc(s.name)}</a>${s.routes ? "" : ' <span class="flag">nur Bahnhof</span>'}` },
+      { key: "p", label: "Pünktlich ab", num: true, asc: true, sort: (s) => s.dep.punctuality, render: (s) => pill(s.dep.punctuality) },
+      { key: "pa", label: "Pünktlich an", num: true, asc: true, sort: (s) => s.arr.punctuality, render: (s) => pct(s.arr.punctuality) },
+      { key: "avg", label: "Ø", num: true, sort: (s) => s.dep.avg_delay, render: (s) => mins(s.dep.avg_delay) },
+      { key: "f", label: "Ausfälle", num: true, sort: (s) => s.dep.cancel_rate, render: (s) => pct(s.dep.cancel_rate) },
+      { key: "pd", label: "Züge/Tag", num: true, sort: (s) => s.per_day, render: (s) => num(s.per_day) },
+      { key: "routes", label: "Strecken", num: true, render: (s) => num(s.routes) },
+      { key: "trend", label: "30 Tage", sort: (s) => (s.spark || []).filter((x) => x.p !== null).at(-1)?.p, render: (s) => sparkline(s.spark || [], { w: 100, h: 24 }) },
+    ],
+  });
 }
 
 async function load() {

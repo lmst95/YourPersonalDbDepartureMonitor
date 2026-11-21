@@ -70,6 +70,8 @@ async def security(request: Request, call_next):
         h.setdefault("Cache-Control", "no-store")
     elif request.url.path.startswith("/static/vendor/"):
         h["Cache-Control"] = "public, max-age=604800"
+    elif request.url.path.startswith("/static/"):
+        h["Cache-Control"] = "no-cache"  # revalidate (ETag/Last-Modified -> 304), so an update shows at once
     return response
 
 
@@ -527,6 +529,8 @@ def overview(period: str = Query("7d", pattern=PERIOD_PATTERN)):
         paths = cached("paths", lambda: {r["id"]: route_path(conn, r["id"]) for r in routes}, ttl=600)
         for r in routes:
             r["kpis"] = route_kpis(conn, r["id"], start, end)
+            hs = hourly_stats(_route_rows(conn, r["id"], start, end))
+            r["dist"], r["worst"] = hs["all"], hs["worst"]
             r["spark"] = spark(conn, "r", str(r["id"]))
             r["next"] = live_rows(conn, r["id"], 0, 3)["next"]
             r["path"] = paths.get(r["id"]) or route_path(conn, r["id"])
@@ -597,46 +601,120 @@ def route_trips(route_id: int = PathParam(..., ge=1, le=10**9),
 
 
 SAMPLE_STATUS = ("ok", "cancelled", "partial", "sev", "replaced", "unknown")
+FAILED = ("cancelled", "partial")
 
 
-def route_samples(conn: sqlite3.Connection, route_id: int, start: int, end: int) -> Dict[str, Any]:
-    """Every trip of the period in a compact form, so the browser can compute quantiles for any selection
-    (hour, weekday, single cell, day, train). Same counting rules as storage.aggregate():
-    replacement trips are left out, coupled trains count once, a delay is only given when it is measured.
-
-    trips: [day index, minute of day, status index, departure delay | null, arrival delay | null,
-            train index, cause set index (0 = none)]"""
-    rows = conn.execute("""
+def _route_rows(conn: sqlite3.Connection, route_id: int, start: int, end: int) -> List[sqlite3.Row]:
+    return conn.execute("""
         SELECT planned, jid, coupled_jid, category, number, line, status, time_type, delay_min, arr_delay_min,
-               cause_codes
+               cause_codes, NULL AS direction
         FROM route_trips WHERE route_id = ? AND planned >= ? AND planned < ? AND status <> 'replacement'
         ORDER BY planned""", (route_id, start, end)).fetchall()
+
+
+def _station_rows(conn: sqlite3.Connection, eva: str, kind: str, start: int, end: int) -> List[sqlite3.Row]:
+    """Station view (all trains at the board), shaped like _route_rows(); direction = destination / origin."""
+    return conn.execute("""
+        SELECT e.planned, e.jid, e.coupled_jid, e.category, e.number, e.line, e.st_status AS status,
+               CASE WHEN e.st_real = 1 THEN 'REAL' ELSE e.time_type END AS time_type, e.st_delay AS delay_min,
+               NULL AS arr_delay_min, e.cause_codes, s.name AS direction
+        FROM stop_events e
+        LEFT JOIN stations s ON s.eva = CASE WHEN e.kind = 'dep' THEN e.dest_eva ELSE e.origin_eva END
+        WHERE e.board_eva = ? AND e.kind = ? AND e.iris = 0 AND e.planned >= ? AND e.planned < ?
+          AND e.st_status IS NOT NULL AND e.st_status NOT IN ('ignore', 'replacement')
+        ORDER BY e.planned""", (eva, kind, start, end)).fetchall()
+
+
+def _dedupe(rows: List[sqlite3.Row]) -> List[sqlite3.Row]:
+    """Coupled trains (one physical train, several journeys) count once – same rule as storage.aggregate()."""
     jids = {r["jid"] for r in rows}
+    return [r for r in rows if r["coupled_jid"] is None or r["coupled_jid"] == r["jid"] or r["coupled_jid"] not in jids]
+
+
+def _measured(r: sqlite3.Row) -> Optional[int]:
+    ok = r["status"] in storage.COUNTED and r["time_type"] == "REAL" and r["delay_min"] is not None
+    return r["delay_min"] if ok else None
+
+
+def samples_of(conn: sqlite3.Connection, rows: List[sqlite3.Row]) -> Dict[str, Any]:
+    """Every trip in a compact form, so the browser can compute quantiles for any selection (hour, weekday,
+    single cell, day, train). Same counting rules as the aggregates: replacement trips are left out,
+    coupled trains count once, a delay is only given when it is measured.
+
+    trips:  [day index, minute of day, status index, delay | null, arrival delay | null, train index,
+             cause set index (0 = none)]
+    trains: [category, number, line, direction]"""
     days: Dict[str, int] = {}
-    trains: Dict[Tuple[str, str, str], int] = {}
+    trains: Dict[Tuple[str, str, str, str], int] = {}
     cause_sets: Dict[Tuple[str, ...], int] = {(): 0}
     out: List[List[Any]] = []
-    for r in rows:
-        if r["coupled_jid"] is not None and r["coupled_jid"] != r["jid"] and r["coupled_jid"] in jids:
-            continue
+    for r in _dedupe(rows):
         t = storage.local_dt(r["planned"])
         di = days.setdefault(t.date().isoformat(), len(days))
-        ti = trains.setdefault((r["category"] or "", r["number"] or "", r["line"] or ""), len(trains))
+        ti = trains.setdefault((r["category"] or "", r["number"] or "", r["line"] or "", r["direction"] or ""),
+                               len(trains))
         st = r["status"]
-        measured = st in storage.COUNTED and r["time_type"] == "REAL" and r["delay_min"] is not None
-        delay = r["delay_min"] if measured else None
         codes: Tuple[str, ...] = ()
-        if st in ("cancelled", "partial") or (r["delay_min"] or 0) >= PUNCTUAL_LIMIT:
+        if st in FAILED or (r["delay_min"] or 0) >= PUNCTUAL_LIMIT:
             codes = tuple(c for c in storage.decode_causes(r["cause_codes"]) if c != "00")
         ci = cause_sets.setdefault(codes, len(cause_sets))
         out.append([di, t.hour * 60 + t.minute, SAMPLE_STATUS.index(st) if st in SAMPLE_STATUS else 5,
-                    delay, r["arr_delay_min"], ti, ci])
+                    _measured(r), r["arr_delay_min"], ti, ci])
     used = {c for s in cause_sets for c in s}
     texts = {r[0]: r[1] for r in conn.execute("SELECT code, text FROM cause_codes")} if used else {}
     return {"days": list(days), "statuses": list(SAMPLE_STATUS),
             "trains": [list(k) for k in trains], "cause_sets": [list(k) for k in cause_sets],
             "cause_text": {c: texts.get(c) or f"Sonstiger Grund (Code {c})" for c in sorted(used)},
             "trips": out}
+
+
+def route_samples(conn: sqlite3.Connection, route_id: int, start: int, end: int) -> Dict[str, Any]:
+    return samples_of(conn, _route_rows(conn, route_id, start, end))
+
+
+def _quant(s: List[int], p: float) -> Optional[float]:
+    """Linear interpolation between closest ranks (same as the browser code)."""
+    if not s:
+        return None
+    i = (len(s) - 1) * p
+    lo, hi = int(i), min(int(i) + 1, len(s) - 1)
+    return _round1(s[lo] + (s[hi] - s[lo]) * (i - lo))
+
+
+def delay_stats(delays: List[int], n: int, failed: int) -> Dict[str, Any]:
+    s = sorted(delays)
+    ok = sum(1 for d in s if d < PUNCTUAL_LIMIT)
+    return {"n": n, "m": len(s), "p": ok, "f": failed, "punctuality": _pct(ok, len(s)),
+            "p10": _quant(s, .1), "p25": _quant(s, .25), "p50": _quant(s, .5), "p75": _quant(s, .75),
+            "p90": _quant(s, .9)}
+
+
+def hourly_stats(rows: List[sqlite3.Row]) -> Dict[str, Any]:
+    """Quantiles overall and per departure hour, plus the worst weekday/hour cell (min. 8 measured)."""
+    acc: Dict[Any, List[Any]] = {}
+    for r in _dedupe(rows):
+        t = storage.local_dt(r["planned"])
+        d = _measured(r)
+        for k in ("all", t.hour, (t.weekday(), t.hour)):
+            a = acc.setdefault(k, [[], 0, 0])
+            a[1] += 1
+            if d is not None:
+                a[0].append(d)
+            if r["status"] in FAILED:
+                a[2] += 1
+    hours = [{"h": h, **delay_stats(*acc[h])} for h in range(24) if h in acc]
+    worst = None
+    for k, (ds, _, _) in acc.items():
+        if isinstance(k, tuple) and len(ds) >= 8:
+            p = _pct(sum(1 for d in ds if d < PUNCTUAL_LIMIT), len(ds))
+            if worst is None or p < worst["punctuality"]:
+                worst = {"wd": k[0], "h": k[1], "punctuality": p}
+    return {"all": delay_stats(*acc.get("all", [[], 0, 0])), "hours": hours, "worst": worst}
+
+
+def _prev(start: int, end: int, fn) -> Optional[Dict[str, Any]]:
+    """KPIs of the same length directly before, for the arrows in the summary."""
+    return fn(start - (end - start), start) if start > 0 and end < FAR_FUTURE else None
 
 
 @app.get("/api/routes/{route_id}/samples")
@@ -647,13 +725,10 @@ def route_samples_api(route_id: int = PathParam(..., ge=1, le=10**9),
     def build(conn):
         r = route_row(conn, route_id)
         start, end, label = period_range(period, date_from, date_to)
-        kpis = route_kpis(conn, route_id, start, end)
-        prev = None
-        if start > 0 and end < FAR_FUTURE:  # same length directly before, for the arrows in the summary
-            prev = route_kpis(conn, route_id, start - (end - start), start)
         reverse = route_kpis(conn, r["reverse_id"], start, end) if r["reverse_id"] else None
-        return {"route": r, "label": label, "kpis": kpis, "prev_kpis": prev, "reverse_kpis": reverse,
-                **route_samples(conn, route_id, start, end)}
+        return {"route": r, "label": label, "kpis": route_kpis(conn, route_id, start, end),
+                "prev_kpis": _prev(start, end, lambda a, b: route_kpis(conn, route_id, a, b)),
+                "reverse_kpis": reverse, **route_samples(conn, route_id, start, end)}
     return cached(f"samples:{route_id}:{period}:{date_from}:{date_to}", lambda: with_conn(build))
 
 
@@ -747,6 +822,32 @@ def station(eva: str = PathParam(..., pattern=r"^\d{6,9}$"),
     return cached(f"station:{eva}:{period}:{date_from}:{date_to}:{kind}", lambda: with_conn(build))
 
 
+@app.get("/api/stations/{eva}/samples")
+def station_samples(eva: str = PathParam(..., pattern=r"^\d{6,9}$"),
+                    period: Optional[str] = Query(None, pattern=PERIOD_PATTERN),
+                    date_from: Optional[str] = Query(None, alias="from", pattern=DATE_PATTERN),
+                    date_to: Optional[str] = Query(None, alias="to", pattern=DATE_PATTERN),
+                    kind: str = Query("dep", pattern="^(dep|arr)$")):
+    """Station cockpit: like /api/routes/{id}/samples, for all trains at the station (departures or arrivals)."""
+    def build(conn):
+        st = observed(conn, eva)
+        start, end, label = period_range(period, date_from, date_to)
+        routes = [dict(r) for r in conn.execute("""
+            SELECT r.id, r.origin_eva, r.dest_eva, so.name origin_name, sd.name dest_name
+            FROM routes r LEFT JOIN stations so ON so.eva = r.origin_eva LEFT JOIN stations sd ON sd.eva = r.dest_eva
+            WHERE r.active = 1 AND (r.origin_eva = ? OR r.dest_eva = ?) ORDER BY r.origin_eva <> ?, sd.name, so.name""",
+            (eva, eva, eva))]
+        for r in routes:
+            r["kpis"] = route_kpis(conn, r["id"], start, end)
+        first = conn.execute("SELECT MIN(planned) FROM stop_events WHERE iris = 0 AND st_status IS NOT NULL").fetchone()[0]
+        return {"station": st, "label": label, "kind": kind, "routes": routes, "watched_only": not routes,
+                "kpis": station_kpis(conn, eva, kind, start, end),
+                "other_kpis": station_kpis(conn, eva, "arr" if kind == "dep" else "dep", start, end),
+                "prev_kpis": _prev(start, end, lambda a, b: station_kpis(conn, eva, kind, a, b)),
+                "since": storage.iso_local(first), **samples_of(conn, _station_rows(conn, eva, kind, start, end))}
+    return cached(f"ssamples:{eva}:{period}:{date_from}:{date_to}:{kind}", lambda: with_conn(build))
+
+
 def live_board(conn: sqlite3.Connection, eva: str, limit: int = 40) -> List[Dict[str, Any]]:
     """Departure board for /live: like station_board() plus the next stops ("über …") and whether the train
     serves one of the routes starting here."""
@@ -831,6 +932,37 @@ def compare(kind: str = Query("routes", pattern="^(routes|stations)$"),
     return cached(f"compare:{kind}:{period}:{date_from}:{date_to}", lambda: with_conn(build))
 
 
+@app.get("/api/catalog")
+def catalog():
+    """Names only: all routes and observed stations (for pickers)."""
+    def build(conn):
+        routes = [dict(r) for r in conn.execute("""
+            SELECT r.id, so.name origin_name, sd.name dest_name FROM routes r
+            LEFT JOIN stations so ON so.eva = r.origin_eva LEFT JOIN stations sd ON sd.eva = r.dest_eva
+            WHERE r.active = 1 ORDER BY so.name, sd.name""")]
+        stations = [dict(r) for r in conn.execute(f"SELECT eva, name FROM stations WHERE eva IN ({OBSERVED_SQL}) ORDER BY name")]
+        return {"routes": routes, "stations": stations}
+    return cached("catalog", lambda: with_conn(build), ttl=300)
+
+
+@app.get("/api/compare/hourly")
+def compare_hourly(period: Optional[str] = Query(None, pattern=PERIOD_PATTERN),
+                   date_from: Optional[str] = Query(None, alias="from", pattern=DATE_PATTERN),
+                   date_to: Optional[str] = Query(None, alias="to", pattern=DATE_PATTERN)):
+    """Matrix route x departure hour: share punctual and quantiles per hour, for the comparison page."""
+    def build(conn):
+        start, end, label = period_range(period, date_from, date_to)
+        routes = [dict(r) for r in conn.execute("""
+            SELECT r.id, so.name origin_name, sd.name dest_name FROM routes r
+            LEFT JOIN stations so ON so.eva = r.origin_eva LEFT JOIN stations sd ON sd.eva = r.dest_eva
+            WHERE r.active = 1 ORDER BY so.name, sd.name""")]
+        for r in routes:
+            r["kpis"] = route_kpis(conn, r["id"], start, end)
+            r.update(hourly_stats(_route_rows(conn, r["id"], start, end)))
+        return {"label": label, "routes": routes}
+    return cached(f"hourly:{period}:{date_from}:{date_to}", lambda: with_conn(build))
+
+
 # ------------------------------------------------------------------ pages
 def page(name: str) -> FileResponse:
     return FileResponse(STATIC / name, media_type="text/html", headers={"Cache-Control": "no-cache"})
@@ -859,6 +991,11 @@ def stations_page():
 @app.get("/stats", include_in_schema=False)
 def stats_page():
     return page("stats.html")
+
+
+@app.get("/analyse", include_in_schema=False)
+def analyse_page():
+    return page("analyse.html")
 
 
 @app.get("/live", include_in_schema=False)

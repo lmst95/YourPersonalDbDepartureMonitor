@@ -22,7 +22,7 @@ export function unpack(d) {
     const dt = new Date(`${iso}T12:00:00Z`);
     return { iso, wd: (dt.getUTCDay() + 6) % 7, date: dt };
   });
-  const trains = d.trains.map(([category, number, line]) => ({ category, number, line }));
+  const trains = d.trains.map(([category, number, line, direction]) => ({ category, number, line, direction: direction || "" }));
   const trips = d.trips.map(([di, min, si, dep, arr, ti, ci]) => ({
     d: di, wd: days[di].wd, date: days[di].date, h: Math.floor(min / 60), min, st: d.statuses[si], dep, arr, tr: ti, cs: ci, delay: dep,
   }));
@@ -116,6 +116,10 @@ export function daily(trips, nDays) {
 // ---------- labels
 export function trainName(t) {
   return t.line && !/^\d+$/.test(t.line) && t.category !== "ICE" && t.category !== "IC" ? t.line : `${t.category || ""} ${t.number || ""}`.trim();
+}
+/** Line for filters: the line name, or the category when there is none (older data: "S", "RE", …). */
+export function lineKey(t) {
+  return t.line && !/^\d+$/.test(t.line) ? t.line : t.category || "?";
 }
 export function pill(p) {
   if (p === null || p === undefined) return `<span class="pill">–</span>`;

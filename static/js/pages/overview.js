@@ -1,5 +1,6 @@
-import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, time, delayBadge, trainLabel,
+import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, time, delayBadge, trainLabel,
   sparkline, pctColor, setUpdated, $ } from "../ui.js";
+import { WD, f1, miniBox, sortTable } from "../cockpit.js";
 
 const state = { period: getParams().period || "7d", view: getParams().view || "list", q: getParams().q || "", data: null };
 let map = null, layers = null, fitPending = true;
@@ -60,24 +61,6 @@ function corridors(routes) {
   return out;
 }
 
-function dirHtml(r) {
-  const k = r.kpis;
-  const next = (r.next || []).map((t) => `<span class="dep"><time>${time(t.planned)}</time>${trainLabel(t)}${delayBadge(t)}</span>`).join("");
-  return `<a class="dir" href="/route/${r.id}?period=${encodeURIComponent(state.period)}">
-    <div>
-      <div class="dir-name"><span>${esc(r.origin_name)} → ${esc(r.dest_name)}</span></div>
-      <div class="dir-kpis">
-        <span class="big" style="color:${k.punctuality === null ? "inherit" : pctColor(k.punctuality)}">${pct(k.punctuality)}</span>
-        <span>pünktlich</span>
-        <span>Ø ${mins(k.avg_delay)}</span>
-        <span>Ausfälle ${pct(k.cancel_rate)}</span>
-      </div>
-    </div>
-    <div class="dir-spark">${sparkline(r.spark || [])}</div>
-    ${next ? `<div class="next" aria-label="Nächste Abfahrten">${next}</div>` : ""}
-  </a>`;
-}
-
 function renderJump(all) {
   const sel = $("#route-jump");
   sel.innerHTML = `<option value="">Direkt zu Strecke …</option>` + all.map((c) =>
@@ -85,24 +68,41 @@ function renderJump(all) {
       `<option value="${d.id}">${esc(d.origin_name)} → ${esc(d.dest_name)} (${pct(d.kpis.punctuality)})</option>`).join("")}</optgroup>`).join("");
 }
 
+const routeMatches = (r) => matches({ dirs: [r] });
+let table = null;
+
 function renderList() {
-  const el = $("#corridors");
+  const el = $("#table");
   const all = corridors(state.data.routes);
   renderJump(all);
-  const cs = all.filter(matches);
-  $("#route-count").textContent = state.q ? `${cs.length} von ${all.length} Verbindungen` : "";
-  if (!all.length) {
-    el.innerHTML = `<div class="card card-pad empty">Noch keine Strecken konfiguriert. Auf dem Server mit <code>dbmon add</code> hinzufügen.</div>`;
+  const rows = state.data.routes.filter(routeMatches).map((r) => ({
+    ...r, name: `${r.origin_name} → ${r.dest_name}`,
+    box: { m: r.dist?.m || 0, punct: r.kpis.punctuality, p10: r.dist?.p10, p25: r.dist?.p25, p50: r.dist?.p50, p75: r.dist?.p75, p90: r.dist?.p90 },
+  }));
+  $("#route-count").textContent = state.q ? `${rows.length} von ${state.data.routes.length} Strecken` : "";
+  if (!state.data.routes.length) {
+    el.innerHTML = `<div class="empty">Noch keine Strecken konfiguriert. Auf dem Server mit <code>dbmon add</code> hinzufügen.</div>`;
+    table = null;
     return;
   }
-  if (!cs.length) {
-    el.innerHTML = `<div class="card card-pad empty">Keine Strecke passt zu „${esc(state.q)}“.</div>`;
-    return;
-  }
-  el.innerHTML = cs.map((c) => `<article class="card corridor">
-      <div class="corridor-head"><h2>${esc(c.title[0])} <span class="sep">${c.both ? "⇄" : "→"}</span> ${esc(c.title[1])}</h2></div>
-      ${c.dirs.map(dirHtml).join("")}
-    </article>`).join("");
+  const href = (r) => `/route/${r.id}?period=${encodeURIComponent(state.period)}`;
+  const cfg = {
+    rows, key: "punct", dir: "asc", empty: `Keine Strecke passt zu „${state.q}“.`, id: (r) => r.id,
+    cols: [
+      { key: "name", label: "Strecke", render: (r) => `<a class="rname" href="${href(r)}">${esc(r.origin_name)} <span class="muted">→</span> ${esc(r.dest_name)}</a>` },
+      { key: "punct", label: "Pünktlich", num: true, asc: true, sort: (r) => r.kpis.punctuality, render: (r) => `<span class="pbar"><i><s style="width:${r.kpis.punctuality ?? 0}%;background:${pctColor(r.kpis.punctuality)}"></s></i><b>${pct(r.kpis.punctuality)}</b></span>` },
+      { key: "p50", label: "Median", num: true, sort: (r) => r.dist?.p50, render: (r) => f1(r.dist?.p50) },
+      { key: "p90", label: "90 %", num: true, tip: "9 von 10 Fahrten sind höchstens so spät (min)", sort: (r) => r.dist?.p90, render: (r) => `<span class="${r.dist?.p90 > 15 ? "t-bad" : r.dist?.p90 >= 6 ? "t-warn" : ""}">${f1(r.dist?.p90)}</span>` },
+      { key: "box", label: "Verteilung", sort: (r) => r.dist?.p75, render: (r) => miniBox(r.box, 100) },
+      { key: "avg", label: "Ø", num: true, sort: (r) => r.kpis.avg_delay, render: (r) => mins(r.kpis.avg_delay) },
+      { key: "fail", label: "Ausfälle", num: true, sort: (r) => r.kpis.cancel_rate, render: (r) => pct(r.kpis.cancel_rate) },
+      { key: "n", label: "Fahrten", num: true, sort: (r) => r.kpis.planned, render: (r) => num(r.kpis.planned) },
+      { key: "trend", label: "30 Tage", tip: "Pünktlichkeit je Tag, sortiert nach dem letzten Tag", sort: (r) => (r.spark || []).filter((x) => x.p !== null).at(-1)?.p, render: (r) => sparkline(r.spark || [], { w: 90, h: 24 }) },
+      { key: "worst", label: "Schlechteste Stunde", asc: true, sort: (r) => r.worst?.punctuality, render: (r) => (r.worst ? `${WD[(r.worst.wd)]} ${r.worst.h}–${r.worst.h + 1} Uhr <span class="muted">${Math.round(r.worst.punctuality)} %</span>` : "–") },
+      { key: "next", label: "Nächste Züge", sort: (r) => r.next?.[0]?.planned, render: (r) => (r.next || []).map((t) => `<span class="dep"><time>${time(t.planned)}</time>${trainLabel(t)}${delayBadge(t)}</span>`).join("") || `<span class="muted">–</span>` },
+    ],
+  };
+  if (table) table.set(rows); else table = sortTable(el, cfg);
 }
 
 function renderMap() {
@@ -164,7 +164,7 @@ async function load() {
     setUpdated(state.data.last_update);
     renderList();
     if (state.view === "map" || matchMedia("(min-width: 1000px)").matches) renderMap();
-  } catch (e) { errorBox($("#corridors"), e); }
+  } catch (e) { errorBox($("#table"), e); }
 }
 
 function setView(v) {

@@ -462,3 +462,22 @@ class CockpitApiTest(unittest.TestCase):
         self.assertEqual(rows[0]["via"], ["Plochingen", "Stuttgart Hbf"])
         self.assertEqual(rows[0]["delay_min"], 3)
         self.assertNotIn("path", rows[0])
+
+    def test_hourly_stats_and_station_samples(self):
+        import dbmonitor.web as w
+        entries = [entry(f"h{i}", hh, d, number=7400 + i) for i, (hh, d) in
+                   enumerate((("07:05", 0), ("07:25", 2), ("07:45", 4), ("07:55", 10), ("08:10", 1)))]
+        entries.append(entry("hx", "07:35", cancelled=True, number=7499))
+        entries.append(entry("other", "09:00", 3, via=(OTHER,), number=7500))  # only in the station view
+        self.load(entries)
+        start, end = storage.day_bounds(DAY.date())
+        hs = w.hourly_stats(w._route_rows(self.conn, 1, start, end))
+        self.assertEqual((hs["all"]["n"], hs["all"]["m"], hs["all"]["p"], hs["all"]["f"]), (6, 5, 4, 1))
+        self.assertEqual(hs["all"]["p50"], 2.0)          # median of 0, 1, 2, 4, 10
+        self.assertEqual(hs["all"]["p90"], 7.6)          # linear interpolation like the browser
+        h7 = next(h for h in hs["hours"] if h["h"] == 7)
+        self.assertEqual((h7["n"], h7["m"], h7["punctuality"]), (5, 4, 75.0))
+        s = w.samples_of(self.conn, w._station_rows(self.conn, ORIGIN, "dep", start, end))
+        self.assertEqual(len(s["trips"]), 7)
+        self.assertEqual(sum(1 for t in s["trips"] if s["statuses"][t[2]] == "cancelled"), 1)
+        self.assertEqual(sorted(t[1] for t in s["trains"])[-1], "7500")

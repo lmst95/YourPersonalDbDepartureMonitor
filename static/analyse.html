@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Pendelmonitor – Analyse</title>
+<link rel="icon" href="/static/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<header class="topbar"><div class="topbar-inner">
+  <a class="brand" href="/"><img src="/static/img/favicon.svg" alt="" width="28" height="28">Pendelmonitor</a>
+  <nav class="topnav" aria-label="Hauptnavigation">
+    <a href="/">Strecken</a>
+    <a href="/stations">Bahnhöfe</a>
+    <a href="/stats">Vergleich</a>
+    <a href="/analyse" aria-current="page">Analyse</a>
+    <a href="/live" class="live-link">Live</a>
+  </nav>
+  <div class="updated" id="updated" aria-live="polite"></div>
+</div></header>
+<main class="ck">
+  <div class="ck-head">
+    <div class="grow">
+      <a class="crumb" id="back" href="/">← Zurück</a>
+      <h1>Analyse</h1>
+    </div>
+    <select class="input wb-scope" id="scope" aria-label="Strecke oder Bahnhof"></select>
+    <a class="btn btn-s" id="cockpit-link" href="/">Zum Cockpit</a>
+  </div>
+  <div class="ck-bar">
+    <div class="chips" id="periods" role="group" aria-label="Zeitraum"></div>
+    <div class="segmented seg-s" role="group" aria-label="Abfahrt oder Ankunft" id="mode">
+      <button type="button" data-v="dep" aria-pressed="true">Abfahrt</button>
+      <button type="button" data-v="arr" aria-pressed="false">Ankunft</button>
+    </div>
+  </div>
+  <form class="daterange hidden" id="daterange">
+    <label>Von<input class="input" type="date" name="from" required></label>
+    <label>Bis<input class="input" type="date" name="to" required></label>
+    <button class="btn" type="submit">Anwenden</button>
+  </form>
+
+  <div class="wb">
+    <aside class="pnl wb-facets" aria-label="Filter">
+      <div class="grp"><h2 class="lbl">Wochentage</h2><div class="wdbtns" id="f-wd" role="group" aria-label="Wochentage"></div>
+        <div class="frow"><button class="btn btn-s" type="button" data-p="work">Mo–Fr</button><button class="btn btn-s" type="button" data-p="we">Sa–So</button><button class="btn btn-s" type="button" data-p="all">Alle</button></div></div>
+      <div class="grp"><h2 class="lbl">Abfahrt zwischen</h2>
+        <div class="frow"><select class="input sel-s" id="f-hf" aria-label="Von Uhrzeit"></select><span class="muted">und</span><select class="input sel-s" id="f-ht" aria-label="Bis Uhrzeit"></select></div>
+        <div class="frow"><button class="btn btn-s" type="button" data-t="5-9">Früh</button><button class="btn btn-s" type="button" data-t="15-19">Abend</button><button class="btn btn-s" type="button" data-t="0-24">Ganzer Tag</button></div></div>
+      <div class="grp"><h2 class="lbl">Linien</h2><div id="f-lines" class="wb-lines"></div></div>
+      <button class="btn btn-s" type="button" id="f-reset">Filter zurücksetzen</button>
+    </aside>
+    <section class="pnl wb-main" aria-label="Auswertung">
+      <div class="filterline" id="filterline" aria-live="polite"></div>
+      <dl class="ans-k wb-k" id="kpis"></dl>
+      <div class="vtabs" role="tablist" id="views"></div>
+      <div id="view"><div class="skeleton" style="min-height:300px"></div></div>
+    </section>
+  </div>
+</main>
+<footer class="site"><span>Daten: DB InfraGO OpenBoards</span><a href="/datenschutz">Datenschutz</a><a href="https://github.com/lmst95/YourPersonalDbDepartureMonitor" rel="noopener">Quellcode</a></footer>
+<nav class="bottomnav" aria-label="Navigation">
+  <a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>Strecken</a>
+  <a href="/stations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6"/></svg>Bahnhöfe</a>
+  <a href="/stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Vergleich</a>
+  <a href="/analyse" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="M14.5 14.5 20 20M7.5 11.5v-2M10 11.5V7.5M12.5 11.5v-3"/></svg>Analyse</a>
+  <a href="/live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 21h10M12 17v4M7 9h4M7 12h7"/></svg>Live</a>
+</nav>
+<script type="module" src="/static/js/pages/analyse.js"></script>
+</body>
+</html>
