@@ -16,6 +16,7 @@ All notable changes to the DB Live Tracker / Pendelmonitor project.
 - Comparison page: matrix route × departure hour (punctuality, median or 90 % value; click an hour to sort by it), daily profile per route on the same scale, sortable KPI table; stations as sortable table
 - Stations list as sortable table
 - Large answers (`/samples`, `/api/compare/hourly`) are cached as encoded JSON in a size-limited LRU (32 MB) instead of Python objects; the web container stayed close to its 256 MB limit before
+- Performance on small servers: statistics are cached 5 min and served stale while they are recomputed in the background; concurrent requests compute a value only once; large answers are gzipped once when cached; one read-only, memory-mapped SQLite connection per worker thread instead of one per request; at most 8 requests are computed at once (`WEB_THREADS`); map geometry loads the station table once instead of once per route and is cached 6 h; local time is converted once per hour instead of per trip; gzip level 6 instead of 9; statistics may be cached by the browser for 60 s (live data never)
 - The workbench script is called `werkbank.js`: ad blockers (EasyPrivacy) block scripts named `analyse.js`
 - Own JS/CSS is revalidated on every load (`Cache-Control: no-cache` + ETag), so an update shows immediately
 

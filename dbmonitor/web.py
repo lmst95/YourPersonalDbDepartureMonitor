@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import gzip
 import json
 import logging
 import os
@@ -45,9 +46,18 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
        "img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; font-src 'self'; "
        "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
+LIVE_API = re.compile(r"^/api/(health|live)$|/(live|board|trips)$")  # never cached by the browser
+
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
-app.add_middleware(GZipMiddleware, minimum_size=2048)  # /samples sends every trip of the period
+app.add_middleware(GZipMiddleware, minimum_size=2048, compresslevel=6)  # 9 costs much CPU for little gain
+
+
+@app.on_event("startup")
+async def limit_threads() -> None:
+    """At most 8 requests are computed at the same time (default 40): bounds memory and CPU on small servers."""
+    import anyio
+    anyio.to_thread.current_default_thread_limiter().total_tokens = int(os.environ.get("WEB_THREADS", "8"))
 
 
 # ------------------------------------------------------------------ middleware
@@ -68,7 +78,8 @@ async def security(request: Request, call_next):
     h["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
     h["Cross-Origin-Opener-Policy"] = "same-origin"
     if request.url.path.startswith("/api/"):
-        h.setdefault("Cache-Control", "no-store")
+        live = LIVE_API.search(request.url.path) or response.status_code != 200
+        h.setdefault("Cache-Control", "no-store" if live else "public, max-age=60")
     elif request.url.path.startswith("/static/vendor/"):
         h["Cache-Control"] = "public, max-age=604800"
     elif request.url.path.startswith("/static/"):
@@ -93,68 +104,176 @@ async def http_error(_request: Request, exc: HTTPException):
 
 
 # ------------------------------------------------------------------ db + cache
+# The data only changes when the collector writes (live every 10 min), so statistics may be a few minutes
+# old. An expired entry is served once more while a background thread computes the new value
+# (stale-while-revalidate), and concurrent requests for the same key compute it only once (single flight).
+# Together this keeps a small server (the web container has 0.5 CPU) from computing the same thing twice
+# and nobody waits for a recomputation after the first one.
+CACHE_TTL = 300.0           # statistics
+LIVE_TTL = 30.0             # boards, next trains
+STALE_MAX = 3600.0          # statistics may be served this old while they are recomputed
 _cache: Dict[str, Tuple[float, Any]] = {}
+_jcache: "OrderedDict[str, Tuple[float, bytes, Optional[bytes]]]" = OrderedDict()   # key -> (time, json, gzip)
+JCACHE_MAX_BYTES = 32 * 2**20
 _cache_lock = threading.Lock()
-CACHE_TTL = 60.0
+_inflight: Dict[str, threading.Event] = {}
 
 
-def cached(key: str, fn, ttl: float = CACHE_TTL):
-    now = time.monotonic()
+def _compute_once(key: str, job) -> None:
+    """Run job() unless another thread already runs it for this key; then wait for that one."""
+    with _cache_lock:
+        ev = _inflight.get(key)
+        mine = ev is None
+        if mine:
+            ev = _inflight[key] = threading.Event()
+    if not mine:
+        ev.wait(120)
+        return
+    try:
+        job()
+    finally:
+        with _cache_lock:
+            _inflight.pop(key, None)
+        ev.set()
+
+
+def _refresh_in_background(key: str, job) -> None:
+    with _cache_lock:
+        if key in _inflight:
+            return
+
+    def run():
+        try:
+            _compute_once(key, job)
+        except Exception:  # keep serving the old value
+            log.exception("Aktualisierung von %s fehlgeschlagen", key)
+    threading.Thread(target=run, name=f"refresh:{key}", daemon=True).start()
+
+
+def _store(key: str, value: Any) -> None:
+    with _cache_lock:
+        if len(_cache) >= 1000:  # drop the older half
+            for k, _ in sorted(_cache.items(), key=lambda kv: kv[1][0])[:500]:
+                _cache.pop(k, None)
+        _cache[key] = (time.monotonic(), value)
+
+
+def cached(key: str, fn, ttl: float = CACHE_TTL, stale: float = STALE_MAX):
     with _cache_lock:
         hit = _cache.get(key)
-        if hit and now - hit[0] < ttl:
-            return hit[1]
-    value = fn()
+    age = time.monotonic() - hit[0] if hit else None
+    if hit and age < ttl:
+        return hit[1]
+    if hit and age < stale:
+        _refresh_in_background(key, lambda: _store(key, fn()))
+        return hit[1]
+    _compute_once(key, lambda: _store(key, fn()))
     with _cache_lock:
-        if len(_cache) > 1000:
-            _cache.clear()
-        _cache[key] = (now, value)
-    return value
+        hit = _cache.get(key)
+    return hit[1] if hit else fn()  # the other thread failed: compute (and raise) here
 
 
-_jcache: "OrderedDict[str, Tuple[float, bytes]]" = OrderedDict()
-JCACHE_MAX_BYTES = 32 * 2**20
+class PrecompressedJSON(Response):
+    """JSON whose gzip form was made once when it was cached, not again for every request."""
+    media_type = "application/json"
+
+    def __init__(self, body: bytes, gz: Optional[bytes]):
+        super().__init__(content=body, media_type="application/json")
+        self._gz = gz
+
+    async def __call__(self, scope, receive, send):
+        accept = b",".join(v for k, v in scope.get("headers") or [] if k == b"accept-encoding")
+        if self._gz is not None and b"gzip" in accept:
+            self.body = self._gz
+            self.headers["content-encoding"] = "gzip"   # the GZip middleware leaves it alone then
+            self.headers["content-length"] = str(len(self._gz))
+        self.headers["vary"] = "Accept-Encoding"
+        await super().__call__(scope, receive, send)
 
 
-def cached_json(key: str, fn, ttl: float = CACHE_TTL) -> Response:
-    """For large answers (all trips of a period): keeps the encoded JSON instead of Python objects – about a
-    tenth of the memory – in an LRU limited to JCACHE_MAX_BYTES, so the 256 MB container cannot fill up."""
-    now = time.monotonic()
-    body = None
+def _store_json(key: str, value: Any) -> None:
+    body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+    gz = gzip.compress(body, compresslevel=6) if len(body) > 2048 else None
+    with _cache_lock:
+        _jcache[key] = (time.monotonic(), body, gz)
+        _jcache.move_to_end(key)
+        total = sum(len(v[1]) + len(v[2] or b"") for v in _jcache.values())
+        while total > JCACHE_MAX_BYTES and len(_jcache) > 1:
+            _, (_, old, oldgz) = _jcache.popitem(last=False)
+            total -= len(old) + len(oldgz or b"")
+
+
+def cached_json(key: str, fn, ttl: float = CACHE_TTL, stale: float = STALE_MAX) -> Response:
+    """For large answers (all trips of a period): keeps the encoded (and gzipped) JSON instead of Python
+    objects – about a tenth of the memory – in an LRU limited to JCACHE_MAX_BYTES."""
     with _cache_lock:
         hit = _jcache.get(key)
-        if hit and now - hit[0] < ttl:
+        if hit:
             _jcache.move_to_end(key)
-            body = hit[1]
-    if body is None:
-        body = json.dumps(fn(), ensure_ascii=False, separators=(",", ":")).encode()
+    age = time.monotonic() - hit[0] if hit else None
+    if hit and age >= ttl and age < stale:
+        _refresh_in_background(key, lambda: _store_json(key, fn()))
+    elif not hit or age >= ttl:
+        _compute_once(key, lambda: _store_json(key, fn()))
         with _cache_lock:
-            _jcache[key] = (now, body)
-            _jcache.move_to_end(key)
-            total = sum(len(v[1]) for v in _jcache.values())
-            while total > JCACHE_MAX_BYTES and len(_jcache) > 1:
-                _, (_, old) = _jcache.popitem(last=False)
-                total -= len(old)
-    return Response(content=body, media_type="application/json")
+            hit = _jcache.get(key)
+        if not hit:
+            _store_json(key, fn())
+            hit = _jcache[key]
+    return PrecompressedJSON(hit[1], hit[2])
+
+
+# One read-only connection per worker thread instead of one per request: no reopening, and memory-mapped
+# reads go through the OS page cache. Reopened if the database file was replaced.
+_local = threading.local()
 
 
 def db() -> sqlite3.Connection:
-    if not Path(DB_PATH).exists():
+    try:
+        st = os.stat(DB_PATH)
+    except FileNotFoundError:
         raise HTTPException(503, "Noch keine Daten")
-    return storage.connect(DB_PATH, readonly=True)
+    ident = (DB_PATH, st.st_dev, st.st_ino)
+    conn = getattr(_local, "conn", None)
+    if conn is None or getattr(_local, "ident", None) != ident:
+        if conn is not None:
+            try:
+                conn.close()
+            except sqlite3.Error:
+                pass
+        conn = storage.connect(DB_PATH, readonly=True)
+        conn.execute("PRAGMA mmap_size = 268435456")   # 256 MB address space, pages stay in the OS cache
+        conn.execute("PRAGMA cache_size = -2000")      # small own cache per thread, mmap does the rest
+        _local.conn, _local.ident = conn, ident
+    return conn
 
 
 def q_all(sql: str, params: tuple = ()) -> List[Dict[str, Any]]:
-    conn = db()
-    try:
-        return [dict(r) for r in conn.execute(sql, params).fetchall()]
-    finally:
-        conn.close()
+    return [dict(r) for r in db().execute(sql, params).fetchall()]
 
 
 def q_one(sql: str, params: tuple = ()) -> Optional[Dict[str, Any]]:
     rows = q_all(sql, params)
     return rows[0] if rows else None
+
+
+class LocalClock:
+    """Local date and time for many Unix times: one time zone conversion per hour instead of per trip."""
+
+    def __init__(self):
+        self._hours: Dict[int, Tuple[str, int, int, int]] = {}
+
+    def __call__(self, epoch: int) -> Tuple[str, int, int, int]:
+        """-> (ISO date, weekday Mon=0, hour, minute of day)"""
+        b = epoch - epoch % 3600
+        base = self._hours.get(b)
+        if base is None:
+            t = storage.local_dt(b)
+            base = self._hours[b] = (t.date().isoformat(), t.weekday(), t.hour, t.minute)
+        if base[3]:  # time zone with a non-whole-hour offset: no shortcut
+            t = storage.local_dt(epoch)
+            return t.date().isoformat(), t.weekday(), t.hour, t.hour * 60 + t.minute
+        return base[0], base[1], base[2], base[2] * 60 + (epoch - b) // 60
 
 
 # ------------------------------------------------------------------ helpers
@@ -493,9 +612,9 @@ def live_rows(conn: sqlite3.Connection, route_id: int, limit_past: int = 4, limi
     return {"past": with_iso(list(reversed(past))), "next": with_iso(nxt)}
 
 
-def route_path(conn: sqlite3.Connection, route_id: int) -> List[Dict[str, Any]]:
+def route_path(conn: sqlite3.Connection, route_id: int, stadas=None) -> List[Dict[str, Any]]:
     """Typical stop sequence with coordinates (stops without coordinates are skipped)."""
-    evas = storage.route_geometry(conn, route_id)
+    evas = storage.route_geometry(conn, route_id, stadas=stadas)
     if not evas:
         return []
     rows = {r["eva"]: r for r in conn.execute(
@@ -528,11 +647,7 @@ def spark(conn: sqlite3.Connection, scope: str, key: str) -> List[Dict[str, Any]
 
 
 def with_conn(fn):
-    conn = db()
-    try:
-        return fn(conn)
-    finally:
-        conn.close()
+    return fn(db())
 
 
 # ------------------------------------------------------------------ API: routes
@@ -553,7 +668,10 @@ def overview(period: str = Query("7d", pattern=PERIOD_PATTERN)):
                    so.lat origin_lat, so.lon origin_lon, sd.lat dest_lat, sd.lon dest_lon
             FROM routes r LEFT JOIN stations so ON so.eva = r.origin_eva LEFT JOIN stations sd ON sd.eva = r.dest_eva
             WHERE r.active = 1 ORDER BY so.name, sd.name""")]
-        paths = cached("paths", lambda: {r["id"]: route_path(conn, r["id"]) for r in routes}, ttl=600)
+        def all_paths(c):  # changes only when the stop pattern of a route changes
+            stadas = storage.stada_map(c)
+            return {r["id"]: route_path(c, r["id"], stadas) for r in routes}
+        paths = cached("paths:" + ",".join(str(r["id"]) for r in routes), lambda: with_conn(all_paths), ttl=6 * 3600)
         for r in routes:
             r["kpis"] = route_kpis(conn, r["id"], start, end)
             hs = hourly_stats(_route_rows(conn, r["id"], start, end))
@@ -563,7 +681,7 @@ def overview(period: str = Query("7d", pattern=PERIOD_PATTERN)):
             r["path"] = paths.get(r["id"]) or route_path(conn, r["id"])
         last = conn.execute("SELECT value FROM collector_state WHERE key = 'last_data_update'").fetchone()
         return {"period": period, "label": label, "routes": routes, "last_update": last[0] if last else None}
-    return cached(f"overview:{period}", lambda: with_conn(build))
+    return cached(f"overview:{period}", lambda: with_conn(build), ttl=120, stale=600)  # includes next trains
 
 
 @app.get("/api/routes/{route_id}")
@@ -587,7 +705,7 @@ def route_live(route_id: int = PathParam(..., ge=1, le=10**9)):
     def build(conn):
         route_row(conn, route_id)
         return live_rows(conn, route_id)
-    return cached(f"live:{route_id}", lambda: with_conn(build), ttl=30)
+    return cached(f"live:{route_id}", lambda: with_conn(build), ttl=LIVE_TTL, stale=2 * LIVE_TTL)
 
 
 STATUS_FILTERS = {
@@ -675,9 +793,10 @@ def samples_of(conn: sqlite3.Connection, rows: List[sqlite3.Row]) -> Dict[str, A
     trains: Dict[Tuple[str, str, str, str], int] = {}
     cause_sets: Dict[Tuple[str, ...], int] = {(): 0}
     out: List[List[Any]] = []
+    clock = LocalClock()
     for r in _dedupe(rows):
-        t = storage.local_dt(r["planned"])
-        di = days.setdefault(t.date().isoformat(), len(days))
+        day, _, _, minute = clock(r["planned"])
+        di = days.setdefault(day, len(days))
         ti = trains.setdefault((r["category"] or "", r["number"] or "", r["line"] or "", r["direction"] or ""),
                                len(trains))
         st = r["status"]
@@ -685,7 +804,7 @@ def samples_of(conn: sqlite3.Connection, rows: List[sqlite3.Row]) -> Dict[str, A
         if st in FAILED or (r["delay_min"] or 0) >= PUNCTUAL_LIMIT:
             codes = tuple(c for c in storage.decode_causes(r["cause_codes"]) if c != "00")
         ci = cause_sets.setdefault(codes, len(cause_sets))
-        out.append([di, t.hour * 60 + t.minute, SAMPLE_STATUS.index(st) if st in SAMPLE_STATUS else 5,
+        out.append([di, minute, SAMPLE_STATUS.index(st) if st in SAMPLE_STATUS else 5,
                     _measured(r), r["arr_delay_min"], ti, ci])
     used = {c for s in cause_sets for c in s}
     texts = {r[0]: r[1] for r in conn.execute("SELECT code, text FROM cause_codes")} if used else {}
@@ -719,10 +838,11 @@ def delay_stats(delays: List[int], n: int, failed: int) -> Dict[str, Any]:
 def hourly_stats(rows: List[sqlite3.Row]) -> Dict[str, Any]:
     """Quantiles overall and per departure hour, plus the worst weekday/hour cell (min. 8 measured)."""
     acc: Dict[Any, List[Any]] = {}
+    clock = LocalClock()
     for r in _dedupe(rows):
-        t = storage.local_dt(r["planned"])
+        _, wd, hour, _ = clock(r["planned"])
         d = _measured(r)
-        for k in ("all", t.hour, (t.weekday(), t.hour)):
+        for k in ("all", hour, (wd, hour)):
             a = acc.setdefault(k, [[], 0, 0])
             a[1] += 1
             if d is not None:
@@ -929,7 +1049,7 @@ def live(eva: Optional[str] = Query(None, pattern=r"^\d{6,9}$")):
         last = conn.execute("SELECT value FROM collector_state WHERE key = 'last_data_update'").fetchone()
         return {"stations": stations, "eva": sel, "board": live_board(conn, sel), "routes": routes,
                 "last_update": last[0] if last else None}
-    return cached(f"livepage:{eva}", lambda: with_conn(build), ttl=30)
+    return cached(f"livepage:{eva}", lambda: with_conn(build), ttl=LIVE_TTL, stale=2 * LIVE_TTL)
 
 
 @app.get("/api/stations/{eva}/board")
@@ -937,7 +1057,7 @@ def station_live(eva: str = PathParam(..., pattern=r"^\d{6,9}$")):
     def build(conn):
         observed(conn, eva)
         return {"dep": station_board(conn, eva, "dep"), "arr": station_board(conn, eva, "arr")}
-    return cached(f"board:{eva}", lambda: with_conn(build), ttl=30)
+    return cached(f"board:{eva}", lambda: with_conn(build), ttl=LIVE_TTL, stale=2 * LIVE_TTL)
 
 
 @app.get("/api/compare")

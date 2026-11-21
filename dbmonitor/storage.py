@@ -859,12 +859,15 @@ def rebuild_aggregates(conn: sqlite3.Connection) -> None:
 
 
 # ------------------------------------------------------ map geometry
-def route_geometry(conn: sqlite3.Connection, route_id: int, sample: int = 150) -> List[str]:
-    """Typical stop sequence (EVA numbers) of a route: origin, intermediate stops, destination."""
+def route_geometry(conn: sqlite3.Connection, route_id: int, sample: int = 150,
+                   stadas: Optional[Dict[str, Optional[str]]] = None) -> List[str]:
+    """Typical stop sequence (EVA numbers) of a route: origin, intermediate stops, destination.
+    Pass `stadas` (stada_map) when calling this for many routes."""
     r = conn.execute("SELECT * FROM routes WHERE id = ?", (route_id,)).fetchone()
     if r is None:
         return []
-    stadas = stada_map(conn)
+    if stadas is None:
+        stadas = stada_map(conn)
     dest_stada, dest_evas = station_group(conn, r["dest_eva"])
     counts: Dict[Tuple[str, ...], int] = {}
     for row in conn.execute("""

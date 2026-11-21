@@ -7,6 +7,8 @@ import datetime as dt
 import json
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -499,3 +501,50 @@ class JsonCacheTest(unittest.TestCase):
         finally:
             w.JCACHE_MAX_BYTES = old
             w._jcache.clear()
+
+
+class PerformanceHelpersTest(unittest.TestCase):
+    def test_local_clock_matches_timezone_conversion_across_dst(self):
+        import dbmonitor.web as w
+        clock = w.LocalClock()
+        for day in (dt.date(2026, 3, 29), dt.date(2026, 10, 25), dt.date(2026, 11, 18)):
+            start = int(dt.datetime.combine(day, dt.time(0), TZ).timestamp()) - 3600
+            for epoch in range(start, start + 27 * 3600, 7 * 60 + 13):
+                t = storage.local_dt(epoch)
+                self.assertEqual(clock(epoch), (t.date().isoformat(), t.weekday(), t.hour, t.hour * 60 + t.minute))
+
+    def test_stale_value_served_while_refreshing(self):
+        import dbmonitor.web as w
+        w._cache.clear()
+        w._store("k", "old")
+        w._cache["k"] = (time.monotonic() - 1000, "old")       # expired, but younger than STALE_MAX
+        done = threading.Event()
+
+        def fresh():
+            done.set()
+            return "new"
+        self.assertEqual(w.cached("k", fresh, ttl=10), "old")    # answered at once
+        self.assertTrue(done.wait(5))
+        for _ in range(50):
+            if w._cache["k"][1] == "new":
+                break
+            time.sleep(0.02)
+        self.assertEqual(w.cached("k", lambda: "unused", ttl=10), "new")
+        w._cache.clear()
+
+    def test_single_flight(self):
+        import dbmonitor.web as w
+        w._cache.clear()
+        calls = []
+
+        def slow():
+            calls.append(1)
+            time.sleep(0.2)
+            return 42
+        threads = [threading.Thread(target=lambda: w.cached("sf", slow)) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(len(calls), 1)
+        w._cache.clear()
