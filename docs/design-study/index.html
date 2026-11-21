@@ -1,0 +1,1212 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pendelmonitor Designstudie</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: tabbed study. One concept per tab = short brief + working mockup inside an app frame.
+   Tokens are the app's own (static/css/app.css) so every mockup reads as the real product. */
+:root{
+  --bg:#f4f5f7; --surface:#fff; --surface-2:#f0f2f5; --border:#e2e5ea;
+  --text:#16191f; --text-2:#4a5160; --text-3:#6f7685;
+  --accent:#2557d6; --accent-soft:#e6edfc;
+  --ok:#18794e; --ok-bg:#e3f5ec; --warn:#a35200; --warn-bg:#fdf0e1;
+  --bad:#c22f2f; --bad-bg:#fde8e8; --fail:#7a1f5c; --fail-bg:#f7e5f1; --sev:#3f5e8c;
+  --muted-bg:#eceef2;
+  /* station monitor: deliberately blue/white in both themes */
+  --dbb:#0f3291; --dbb-frame:#1d2430; --dbb-ink:#ffffff; --dbb-dim:rgba(255,255,255,.74); --dbb-line:rgba(255,255,255,.55);
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0f1115; --surface:#181b21; --surface-2:#20242c; --border:#2c313b;
+  --text:#eceef2; --text-2:#b9bfcb; --text-3:#8b92a1; --accent:#7ea2ff; --accent-soft:#1f2a44;
+  --ok:#4cc38a; --ok-bg:#13291f; --warn:#f0a64a; --warn-bg:#2e2112; --bad:#ff7b7b; --bad-bg:#351718;
+  --fail:#e48ac6; --fail-bg:#331628; --sev:#93b1e0; --muted-bg:#262a33; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --surface:#181b21; --surface-2:#20242c; --border:#2c313b;
+  --text:#eceef2; --text-2:#b9bfcb; --text-3:#8b92a1; --accent:#7ea2ff; --accent-soft:#1f2a44;
+  --ok:#4cc38a; --ok-bg:#13291f; --warn:#f0a64a; --warn-bg:#2e2112; --bad:#ff7b7b; --bad-bg:#351718;
+  --fail:#e48ac6; --fail-bg:#331628; --sev:#93b1e0; --muted-bg:#262a33; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font:14px/1.45 var(--font)}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.num,.tabular{font-variant-numeric:tabular-nums}
+.muted{color:var(--text-3)} .small{font-size:12px}
+.wrap{max-width:1360px;margin:0 auto;padding-block:18px 56px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.study-head{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:flex-end;justify-content:space-between}
+.study-head h1{margin:0;font-size:22px;text-wrap:balance}
+.study-head p{margin:4px 0 0;color:var(--text-2);max-width:70ch}
+.sample{font-size:12px;color:var(--warn);background:var(--warn-bg);padding:3px 8px;border-radius:999px;white-space:nowrap}
+.principles{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0;padding:0;list-style:none}
+.principles li{font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px 10px;color:var(--text-2)}
+
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg)}
+.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);margin:14px 0 12px;padding:6px 0;border-bottom:1px solid var(--border);display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.tabs a{flex:none;padding:7px 12px;border-radius:8px;color:var(--text-2);text-decoration:none;font-weight:600;font-size:13px;white-space:nowrap}
+.tabs a b{font-family:var(--mono);color:var(--text-3);margin-right:6px;font-weight:600}
+.tabs a:hover{background:var(--surface-2)}
+.tabs a[aria-current="page"]{background:var(--accent);color:#fff}
+.tabs a[aria-current="page"] b{color:#fff;opacity:.75}
+
+.brief{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:8px 20px;margin-bottom:12px}
+.brief h2{grid-column:1/-1;margin:0;font-size:18px}
+.brief div h4{margin:0 0 2px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3)}
+.brief div p,.brief ul{margin:0;color:var(--text-2);font-size:13px}
+.brief ul{padding-left:16px}
+@media(max-width:900px){.brief{grid-template-columns:1fr 1fr}}
+@media(max-width:520px){.brief{grid-template-columns:1fr}}
+
+/* app frame */
+.frame{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--bg);box-shadow:0 1px 3px rgba(16,24,40,.08)}
+.appbar{display:flex;align-items:center;gap:14px;padding:6px 12px;background:var(--surface);border-bottom:1px solid var(--border);min-height:40px;overflow-x:auto}
+.appbar .brand{font-weight:700;font-size:13px;display:flex;gap:6px;align-items:center;white-space:nowrap}
+.appbar .brand i{width:14px;height:14px;border-radius:4px;background:var(--accent);display:inline-block}
+.appbar nav{display:flex;gap:2px;margin-left:auto}
+.appbar nav span{font-size:12px;padding:4px 10px;border-radius:999px;color:var(--text-2);white-space:nowrap}
+.appbar nav span.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.appbar nav span.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);margin-right:5px;vertical-align:1px}
+.m{padding:10px;font-size:13px}
+
+/* panels */
+.pnl{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px;min-width:0}
+.ph{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.ph h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);font-weight:700}
+.ph .sp{flex:1}
+.g12{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:8px}
+.s3{grid-column:span 3}.s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:span 12}
+@media(max-width:960px){.s3,.s4,.s5,.s6,.s7,.s8{grid-column:span 12}}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* controls */
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:3px 9px;font-size:12px;cursor:pointer;color:var(--text-2)}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+select.in,input.in{border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:3px 8px;font-size:12.5px;min-height:28px;max-width:100%}
+.btn{border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--text-2)}
+.btn:hover{background:var(--surface-2)}
+.btn.on{background:var(--accent-soft);color:var(--accent);border-color:transparent;font-weight:600}
+.lbl{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+
+/* KPI strip */
+.kstrip{display:flex;flex-wrap:wrap;background:var(--surface);border:1px solid var(--border);border-radius:8px}
+.k{padding:6px 14px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-width:0}
+.k:last-child{border-right:0}
+.k span{font-size:11px;color:var(--text-3);white-space:nowrap}
+.k b{font-size:19px;line-height:1.15;font-variant-numeric:tabular-nums;white-space:nowrap}
+.k em{font-style:normal;font-size:11px;font-variant-numeric:tabular-nums}
+.up{color:var(--ok)} .down{color:var(--bad)}
+
+/* tables */
+.tw{overflow:auto;border-radius:6px}
+table.t{width:100%;border-collapse:collapse;font-size:12.5px}
+table.t th{position:sticky;top:0;background:var(--surface);z-index:1;text-align:left;padding:0;border-bottom:1px solid var(--border);white-space:nowrap}
+table.t th button{all:unset;box-sizing:border-box;display:flex;gap:3px;align-items:center;width:100%;padding:5px 8px;font-size:11px;font-weight:700;color:var(--text-3);cursor:pointer;text-transform:uppercase;letter-spacing:.03em}
+table.t th.r button{justify-content:flex-end}
+table.t th button:hover{color:var(--text)}
+table.t th button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+table.t th[aria-sort] button{color:var(--accent)}
+table.t th button::after{content:"↕";opacity:.35;font-size:10px}
+table.t th[aria-sort="ascending"] button::after{content:"▲";opacity:1;font-size:8px}
+table.t th[aria-sort="descending"] button::after{content:"▼";opacity:1;font-size:8px}
+table.t td{padding:4px 8px;border-bottom:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+table.t td.r{text-align:right;font-variant-numeric:tabular-nums}
+table.t tbody tr:hover td{background:var(--surface-2)}
+table.t tr.click{cursor:pointer}
+table.t tr.open td{background:var(--accent-soft)}
+table.t tr.detail td{background:var(--surface-2);white-space:normal;padding:8px}
+table.t tfoot td{font-weight:600;border-bottom:0;border-top:1px solid var(--border)}
+.pill{display:inline-block;padding:0 6px;border-radius:999px;font-size:11px;font-weight:600;line-height:18px}
+.p-ok{background:var(--ok-bg);color:var(--ok)}.p-warn{background:var(--warn-bg);color:var(--warn)}.p-bad{background:var(--bad-bg);color:var(--bad)}.p-fail{background:var(--fail-bg);color:var(--fail)}
+.ln{display:inline-block;min-width:38px;text-align:center;font-weight:700;font-size:11px;border-radius:4px;padding:0 4px;line-height:18px;color:#fff}
+.ln-S{background:#3a8a3a}.ln-MEX{background:#b3462e}.ln-RE{background:#8c2a6b}.ln-ICE,.ln-IC{background:#555d6b}
+.pbar{display:inline-flex;align-items:center;gap:6px}
+.pbar i{display:inline-block;width:64px;height:6px;border-radius:3px;background:var(--muted-bg);position:relative;overflow:hidden}
+.pbar i s{position:absolute;inset:0 auto 0 0;border-radius:3px}
+
+/* heatmap */
+.heat{display:grid;gap:2px;font-size:10px;color:var(--text-3)}
+.heat .c{height:20px;border-radius:3px;cursor:pointer;border:0;padding:0}
+.heat .c.sel{outline:2px solid var(--text);outline-offset:0}
+.heat .c:focus-visible{outline:2px solid var(--accent)}
+.heat .hl{text-align:center;align-self:end}
+.heat .rl{align-self:center;padding-right:4px;font-weight:600}
+.legend{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--text-3);margin-top:6px;flex-wrap:wrap}
+.legend .scale{width:120px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--bad),var(--warn),var(--ok))}
+.info{font-size:12px;color:var(--text-2);min-height:18px;margin-top:4px}
+
+/* histogram bars */
+.hb{display:grid;grid-template-columns:auto 1fr auto;gap:3px 8px;align-items:center;font-size:12px}
+.hb i{height:12px;border-radius:2px;display:block}
+.hb .v{font-variant-numeric:tabular-nums;color:var(--text-2);text-align:right}
+
+.chart{width:100%;min-width:0}
+.chart svg{display:block}
+svg text{fill:var(--text-3);font-family:var(--font)}
+
+/* V3 briefing */
+.brf{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.verdict{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:4px 16px;align-items:center}
+.verdict .big{font-size:40px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.verdict h3{margin:0;font-size:17px;text-wrap:balance}
+.verdict p{margin:0;color:var(--text-2)}
+.facts{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.facts li{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:flex;gap:10px;align-items:baseline}
+.facts li b{font-size:16px;min-width:64px;font-variant-numeric:tabular-nums}
+.band{display:grid;grid-template-columns:repeat(20,1fr);gap:2px}
+.band div{height:34px;border-radius:3px;position:relative;display:flex;align-items:flex-end;justify-content:center;font-size:10px;color:var(--text);font-weight:600}
+.band div.win{outline:2px solid var(--accent);outline-offset:1px}
+.bandl{display:grid;grid-template-columns:repeat(20,1fr);gap:2px;font-size:10px;color:var(--text-3);text-align:center;margin-top:3px}
+.trains{display:grid;gap:6px}
+.trn{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;display:grid;grid-template-columns:auto auto 1fr auto;gap:2px 12px;align-items:center}
+.trn .tm{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.trn .say{grid-column:1/-1;color:var(--text-2);font-size:12.5px}
+details.more{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px}
+details.more summary{cursor:pointer;font-weight:600;font-size:13px}
+
+/* V4 workbench */
+.wb{display:grid;grid-template-columns:230px minmax(0,1fr);gap:8px}
+@media(max-width:820px){.wb{grid-template-columns:1fr}}
+.facet{display:flex;flex-direction:column;gap:12px}
+.facet .grp{display:flex;flex-direction:column;gap:5px}
+.wdbtns{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.wdbtns button{padding:4px 0;font-size:11.5px}
+.chk{display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer}
+.chk .c{margin-left:auto;color:var(--text-3);font-size:11px}
+.filterline{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px}
+.filterline .tag{background:var(--accent-soft);color:var(--accent);border-radius:999px;padding:1px 8px;font-weight:600}
+.vtabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:8px 0;overflow-x:auto}
+.vtabs button{border:0;background:none;padding:6px 10px;font-size:12.5px;font-weight:600;color:var(--text-3);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.vtabs button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+
+/* V5 matrix */
+.mx{display:grid;gap:1px;font-size:10.5px;min-width:720px}
+.mx button.h{all:unset;cursor:pointer;text-align:center;color:var(--text-3);font-weight:600;padding:2px 0;border-radius:3px}
+.mx button.h:hover,.mx button.h.on{color:var(--accent);background:var(--accent-soft)}
+.mx .rn{padding-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;align-self:center;color:var(--text-2)}
+.mx .c{height:20px;border-radius:2px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;color:var(--text);font-size:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.sm{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.sm .top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.sm .nm{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sm .pv{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sm .sub{font-size:11px;color:var(--text-3);display:flex;flex-wrap:wrap;gap:2px 10px;font-variant-numeric:tabular-nums}
+
+/* Cockpit round 2 */
+.tb{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tb .sp{flex:1}
+.mt{margin-top:8px}
+.livechip{font-size:12px;color:var(--text-2);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:3px 10px;background:var(--surface);white-space:nowrap}
+.livechip i{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--bad);margin-right:6px;vertical-align:1px}
+.livechip em{font-style:normal;color:var(--warn);font-weight:700}
+.ans{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 18px;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-top:8px}
+.ans-big b{display:block;font-size:34px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+.ans-big b small{font-size:18px;font-weight:700}
+.ans-big span{display:block;font-size:11px;color:var(--text-3);white-space:nowrap}
+.ans-txt{margin:0;color:var(--text-2);font-size:13.5px;max-width:64ch}
+.ans-txt b{color:var(--text)}
+.ans-k{display:flex;margin:0}
+.ans-k div{padding:0 12px;border-left:1px solid var(--border)}
+.ans-k dt{font-size:11px;color:var(--text-3);white-space:nowrap}
+.ans-k dd{margin:0;font-weight:700;font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dl{font-style:normal;font-size:10.5px;font-weight:600;margin-left:4px;white-space:nowrap}
+@media(max-width:1150px){.ans{grid-template-columns:auto minmax(0,1fr)}.ans-k{grid-column:1/-1;flex-wrap:wrap;gap:6px 0}.ans-k div:first-child{border-left:0;padding-left:0}}
+.hit{cursor:pointer}
+.selt{font-size:15px;font-weight:700;margin-bottom:6px}
+.selk{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+.selk div{background:var(--surface-2);border-radius:6px;padding:4px 8px;min-width:0}
+.selk div:first-child{grid-column:span 3;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.selk span{display:block;font-size:11px;color:var(--text-3)}
+.selk div:first-child span{display:inline}
+.selk b{font-size:15px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.selk div:first-child b{font-size:22px}
+.more-link{display:inline-block;margin-top:10px;font-size:12.5px;font-weight:600;color:var(--accent);text-decoration:none}
+.cal{display:grid;gap:2px;font-size:10px;color:var(--text-3)}
+.cal .c{height:24px;border:0;border-radius:3px;font-size:10px;color:var(--text);cursor:pointer;padding:0;font-variant-numeric:tabular-nums}
+.cal .c.sel{outline:2px solid var(--text)}
+.cal .hl{text-align:center;white-space:nowrap}
+.cal .rl{align-self:center;font-weight:600}
+.dots{display:inline-flex;gap:2px;vertical-align:middle}
+.dots i{width:7px;height:13px;border-radius:2px;background:var(--muted-bg)}
+.dots i.o{background:var(--ok)}.dots i.w{background:var(--warn)}.dots i.b{background:var(--bad)}.dots i.x{background:var(--fail)}
+.dotleg{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-3);margin-top:6px;align-items:center}
+.dotleg i{display:inline-block;width:7px;height:11px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.stack{display:flex;flex-direction:column;gap:8px;min-width:0}
+.nextb{font-size:10px;background:var(--accent);color:#fff;border-radius:4px;padding:0 4px;margin-left:5px;font-weight:700;vertical-align:1px}
+.runs{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.run{font-size:11.5px;border-radius:5px;padding:1px 6px;background:var(--surface);font-variant-numeric:tabular-nums}
+.run.o{background:var(--ok-bg);color:var(--ok)}.run.w{background:var(--warn-bg);color:var(--warn)}.run.b{background:var(--bad-bg);color:var(--bad)}.run.x{background:var(--fail-bg);color:var(--fail)}
+.dirs{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+@media(max-width:900px){.dirs{grid-template-columns:1fr}}
+.dir-n{margin:2px 0 0;font-size:16px}
+.dir-k{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:5px;margin:8px 0 10px}
+.dir-k div{background:var(--surface-2);border-radius:6px;padding:5px 8px;min-width:0}
+.dir-k b{display:block;font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dir-k span,.dir-k em{display:block;font-size:11px;color:var(--text-3);font-style:normal}
+.dir-cmp{display:grid;grid-template-columns:auto repeat(2,minmax(0,1fr));gap:4px 14px;font-size:12.5px;align-items:center}
+.dir-cmp b{font-variant-numeric:tabular-nums}
+.tabs .sep{flex:none;align-self:center;font-size:11px;color:var(--text-3);padding:0 4px 0 10px;white-space:nowrap}
+.tabs a.old{font-weight:500;color:var(--text-3)}
+
+/* Live: station monitor look (deliberately blue/white in both themes) */
+.lvbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+.lv{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);gap:8px}
+@media(max-width:900px){.lv{grid-template-columns:1fr}}
+.dbb{background:var(--dbb);color:var(--dbb-ink);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;border-radius:4px;overflow:hidden;box-shadow:0 0 0 6px var(--dbb-frame)}
+.dbb-head{display:flex;align-items:flex-end;gap:14px;padding:12px 16px 10px;flex-wrap:wrap}
+.dbb-title{font-size:30px;font-weight:700;line-height:1}
+.dbb-title small{font-size:16px;font-weight:400;color:var(--dbb-dim);margin-left:10px;font-style:italic}
+.dbb-st{font-size:15px;color:var(--dbb-dim);margin-top:4px}
+.dbb-clock{margin-left:auto;font-size:30px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.dbb-cols,.dbb-row{display:grid;grid-template-columns:78px 84px minmax(0,1fr) 54px;gap:0 14px;padding-left:16px;padding-right:16px}
+.dbb-cols{font-size:12px;color:var(--dbb-dim);padding-top:5px;padding-bottom:5px;border-top:2px solid var(--dbb-ink)}
+.dbb-cols span:last-child{text-align:right}
+.dbb-row{padding-top:8px;padding-bottom:9px;border-top:1px solid var(--dbb-line);align-items:start}
+.dbb-row .t{font-size:23px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}
+.dbb-row .ca{display:inline-block;margin-top:4px;background:var(--dbb-ink);color:var(--dbb);font-weight:700;font-size:13px;padding:0 5px;line-height:18px;white-space:nowrap}
+.dbb-row .z{font-size:18px;font-weight:700;padding-top:3px;white-space:nowrap}
+.dbb-row .via{font-size:13.5px;color:var(--dbb-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbb-row .dest{font-size:23px;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dbb-row .g{font-size:27px;font-weight:700;text-align:right;line-height:1.05}
+.dbb-row .g.chg span{background:var(--dbb-ink);color:var(--dbb);padding:0 5px}
+.dbb-row.x .t,.dbb-row.x .dest{text-decoration:line-through;text-decoration-thickness:2px}
+.lauf{margin-top:6px;background:var(--dbb-ink);color:var(--dbb);font-size:13.5px;font-weight:700;overflow:hidden;white-space:nowrap;line-height:20px}
+.lauf span{display:inline-block;padding-left:6px}
+.lauf.long span{padding-left:6px;animation:lauf 18s linear 1.5s infinite}
+@keyframes lauf{0%,8%{transform:translateX(0)}100%{transform:translateX(-100%)}}
+
+.dbb-foot{border-top:2px solid var(--dbb-ink);padding:6px 16px;font-size:12px;color:var(--dbb-dim);display:flex;gap:14px;flex-wrap:wrap}
+.dbg{display:grid;grid-template-columns:120px minmax(0,1fr);gap:0 20px;padding:18px 18px 16px}
+.dbg-gl{text-align:center;border-right:1px solid var(--dbb-line);padding-right:16px}
+.dbg-gl span{display:block;font-size:14px;color:var(--dbb-dim)}
+.dbg-gl b{display:block;font-size:100px;line-height:.95;font-weight:700}
+.dbg-tz{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.dbg-tz .ca{font-size:16px;background:var(--dbb-ink);color:var(--dbb);padding:0 6px;line-height:24px}
+.dbg-via{font-size:16px;color:var(--dbb-dim);margin-top:8px}
+.dbg-dest{font-size:44px;font-weight:700;line-height:1.05;margin-top:2px;overflow-wrap:anywhere}
+.dbg-next{border-top:1px solid var(--dbb-line);padding:10px 18px;font-size:17px;display:flex;gap:16px;flex-wrap:wrap}
+.dbg-next span:first-child{color:var(--dbb-dim)}
+.dbg-sec{display:flex;gap:8px;padding:0 18px 14px;font-size:13px;color:var(--dbb-dim);align-items:center}
+.dbg-sec i{display:inline-block;width:34px;height:20px;border:1.5px solid var(--dbb-ink);text-align:center;font-style:normal;font-weight:700;color:var(--dbb-ink);line-height:17px}
+.dbg-sec i.on{background:var(--dbb-ink);color:var(--dbb)}
+@media(max-width:560px){
+  .dbb-cols,.dbb-row{grid-template-columns:54px 58px minmax(0,1fr) 34px;gap:0 8px;padding-left:10px;padding-right:10px}
+  .dbb-row .t,.dbb-row .dest{font-size:18px}.dbb-row .z{font-size:14px}.dbb-row .g{font-size:21px}
+  .dbb-title{font-size:24px}.dbb-clock{font-size:24px}
+  .dbg{grid-template-columns:70px minmax(0,1fr);gap:0 12px;padding:12px}.dbg-gl b{font-size:56px}.dbg-dest{font-size:28px}.dbg-tz{font-size:20px}
+}
+.mini{background:var(--dbb);color:var(--dbb-ink);font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;border-radius:4px;padding:8px 12px}
+.mini h4{margin:0 0 4px;font-size:14px;display:flex;justify-content:space-between;gap:8px}
+.mini h4 span{font-weight:400;font-size:12px;color:var(--dbb-dim);white-space:nowrap}
+.mini div{display:grid;grid-template-columns:48px 62px minmax(0,1fr) auto;gap:6px;border-top:1px solid var(--dbb-line);padding:3px 0;font-size:14px;align-items:center}
+.mini div b{font-variant-numeric:tabular-nums}
+.mini div em{font-style:normal;background:var(--dbb-ink);color:var(--dbb);font-weight:700;font-size:12px;padding:0 4px}
+.mini div span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Fazit */
+.fz{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.fz .pnl{padding:12px 14px}
+.fz h3{margin:0 0 4px;font-size:15px}
+.fz p,.fz li{color:var(--text-2);font-size:13px}
+.fz ul{padding-left:18px;margin:6px 0 0}
+code{font-family:var(--mono);font-size:12px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="study-head">
+    <div>
+      <h1>Pendelmonitor – Runde 2: Cockpit, Analyse, Vergleich, Live</h1>
+      <p>Drei neue Cockpit-Richtungen (A, B, C) für die Streckenseite, dazu Werkbank und Matrix als Zusatzseiten und die Live-Tafel im Stil der Bahnhofsmonitore. Alles ist klickbar, jede Tabelle sortierbar.</p>
+    </div>
+    <span class="sample">Beispieldaten, simuliert aus euren Streckenmittelwerten</span>
+  </header>
+  <ul class="principles" aria-label="Gilt für alle Varianten">
+    <li>Halbe Abstände, 13 px Grundschrift in Analysen</li>
+    <li>Kennzahlen als eine Leiste statt Kacheln</li>
+    <li>Jede Tabelle sortierbar</li>
+    <li>Boxplots: Box = 25–75 %, Strich = Median, Whisker = 10–90 %</li>
+    <li>Live nur auf <code>/live</code></li>
+  </ul>
+
+  <nav class="tabs" id="tabs" aria-label="Varianten">
+    <a href="#ca"><b>A</b>Cockpit Kreuz</a>
+    <a href="#cb"><b>B</b>Cockpit Fahrplan</a>
+    <a href="#cc"><b>C</b>Cockpit Hin &amp; Zurück</a>
+    <a href="#v4"><b>+</b>Analyse-Werkbank</a>
+    <a href="#v5"><b>+</b>Matrix-Vergleich</a>
+    <a href="#live"><b>L</b>Live-Tafel</a>
+    <a href="#fazit"><b>→</b>Seitenplan</a>
+    <span class="sep">Runde 1:</span>
+    <a href="#v1" class="old">Cockpit alt</a>
+    <a href="#v2" class="old">Tabelle</a>
+    <a href="#v3" class="old">Briefing</a>
+  </nav>
+
+  <section id="p-ca" hidden>
+    <div class="brief">
+      <h2>A · Kreuz-Cockpit: eine Grafik, alle Zeitfragen</h2>
+      <div><h4>Idee</h4><p>Heatmap, Stunden-Boxplots und Wochentags-Boxplots sind eine einzige Grafik mit gemeinsamen Achsen: oben je Stunde, rechts je Wochentag, in der Mitte jedes Feld. Ein Klick auf Stunde, Tag oder Feld füllt rechts das Auswahl-Panel und filtert die Zugliste.</p></div>
+      <div><h4>Anders als Runde 1</h4><ul><li>Eine Antwortzeile statt 8 Kacheln</li><li>Verteilung und Gründe nur noch für die Auswahl</li><li>Verlauf als Kalender statt Balken</li></ul></div>
+      <div><h4>Stärken</h4><ul><li>Weniger Diagramme, mehr Aussage</li><li>Alles hängt zusammen</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Die Kreuzgrafik muss man einmal verstehen</li><li>Auf dem Handy eng</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Strecken</span><span>Analyse</span><span>Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="ca"></div></div>
+  </section>
+
+  <section id="p-cb" hidden>
+    <div class="brief">
+      <h2>B · Fahrplan-Cockpit: der eigene Zug steht im Mittelpunkt</h2>
+      <div><h4>Idee</h4><p>Die Hauptfläche ist der Fahrplan der Strecke: jede regelmäßige Abfahrt eine Zeile mit Pünktlichkeit, Boxplot und den letzten 14 Fahrten als Farbstreifen. Filter für Tagtyp, Tageszeit und Linie. Klick auf einen Zug zeigt jede einzelne Fahrt.</p></div>
+      <div><h4>Anders als Runde 1</h4><ul><li>Zugliste wird Hauptsache, nicht Fußnote</li><li>„Nächster Zug“ hervorgehoben</li><li>Diagramme als schmale Seitenleiste</li></ul></div>
+      <div><h4>Stärken</h4><ul><li>Beantwortet „Wie gut ist mein 7:14?“ sofort</li><li>Einzelne Ausreißer sichtbar</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Bei vielen Linien lange Liste</li><li>Muster über Wochentage weniger sichtbar</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Strecken</span><span>Analyse</span><span>Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="cb"></div></div>
+  </section>
+
+  <section id="p-cc" hidden>
+    <div class="brief">
+      <h2>C · Hin &amp; Zurück: beide Richtungen im eigenen Pendelfenster</h2>
+      <div><h4>Idee</h4><p>Pendeln heißt zwei Strecken. Die Seite zeigt Hin- und Rückweg nebeneinander, jeweils ausgewertet für das eigene Zeitfenster (z. B. 7–9 und 16–18 Uhr), mit Tagesband, Wochentags-Boxplots und den Zügen im Fenster.</p></div>
+      <div><h4>Anders als Runde 1</h4><ul><li>Kennzahlen für das eigene Fenster, Gesamtwert nur zum Vergleich</li><li>Strecke und Gegenrichtung auf einer Seite</li></ul></div>
+      <div><h4>Stärken</h4><ul><li>Genau die Zahlen, die einen Pendler betreffen</li><li>Vergleich Hin/Rück direkt</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Fenster müssen gespeichert werden (lokal im Browser)</li><li>Für Einzelstrecken ohne Rückweg weniger sinnvoll</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Mein Pendeln</span><span>Strecken</span><span>Analyse</span><span>Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="cc"></div></div>
+  </section>
+
+  <section id="p-v1" hidden>
+    <div class="brief">
+      <h2>1 · Cockpit: alles zu einer Strecke auf einem Bildschirm</h2>
+      <div><h4>Idee</h4><p>Die Streckenseite wird ein dichtes Dashboard im 12-Spalten-Raster. Oben eine schmale Kennzahlenleiste mit Vergleich zum Vorzeitraum, darunter Boxplots je Stunde und Wochentag, Heatmap, Verteilung und die sortierbare Zugliste.</p></div>
+      <div><h4>Für wen</h4><p>Wer am Desktop schnell den Gesamtzustand einer Strecke sehen will.</p></div>
+      <div><h4>Stärken</h4><ul><li>Kein Scrollen für das Wesentliche</li><li>Nah am heutigen Aufbau, wenig Umbau</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Auf dem Handy wird es eine lange Spalte</li><li>Viele Diagramme gleichzeitig</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Strecken</span><span>Bahnhöfe</span><span>Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="v1"></div></div>
+  </section>
+
+  <section id="p-v2" hidden>
+    <div class="brief">
+      <h2>2 · Tabelle zuerst: die Startseite ist eine sortierbare Rangliste</h2>
+      <div><h4>Idee</h4><p>Alle Strecken in einer Tabelle mit Mini-Boxplot, Pünktlichkeitsbalken und 6-Wochen-Verlauf je Zeile. Ein Klick klappt die Zeile auf und zeigt die Stunden- und Wochentags-Boxplots direkt darunter.</p></div>
+      <div><h4>Für wen</h4><p>Wer viele Strecken beobachtet und vergleichen will, welche gerade am schlechtesten läuft.</p></div>
+      <div><h4>Stärken</h4><ul><li>Höchste Informationsdichte</li><li>Sortieren beantwortet die meisten Fragen</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Auf dem Handy nur mit Querscrollen</li><li>Wirkt nüchtern</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Strecken</span><span>Bahnhöfe</span><span>Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="v2"></div></div>
+  </section>
+
+  <section id="p-v3" hidden>
+    <div class="brief">
+      <h2>3 · Pendler-Briefing: erst die Antwort, dann die Zahlen</h2>
+      <div><h4>Idee</h4><p>Die Seite beantwortet in Sätzen, was ein Pendler wissen will: wie zuverlässig die Strecke ist, wann man besser fährt, welcher Zug der verlässlichste ist. Boxplots werden in Sprache übersetzt („meist 0–3 min, jeder 10. über 9 min“). Diagramme liegen in aufklappbaren Abschnitten.</p></div>
+      <div><h4>Für wen</h4><p>Handy-Nutzer, die morgens kurz nachsehen.</p></div>
+      <div><h4>Stärken</h4><ul><li>Auf einen Blick verständlich</li><li>Persönliche Pendelzeiten hervorgehoben</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Texte müssen gut generiert werden</li><li>Für Detailanalyse zu flach</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span class="on">Meine Strecke</span><span>Analyse</span><span class="live">Live</span></nav></div>
+      <div class="m" id="v3"></div></div>
+  </section>
+
+  <section id="p-v4" hidden>
+    <div class="brief">
+      <h2>4 · Analyse-Werkbank: Filter links, Auswertung rechts</h2>
+      <div><h4>Idee</h4><p>Eine eigene Analyse-Seite mit Filtern nach Wochentag, Uhrzeit, Linie und Ausfällen. Alle Ansichten (Stunde, Wochentag, Heatmap, Verteilung, Züge, Einzelfahrten) rechnen mit demselben Filter. Ein Klick in die Heatmap setzt den Filter auf genau dieses Feld.</p></div>
+      <div><h4>Für wen</h4><p>Wer genau wissen will, warum und wann es hakt, z. B. „S1 werktags 7–9 Uhr“.</p></div>
+      <div><h4>Stärken</h4><ul><li>Beantwortet beliebige Detailfragen</li><li>Einzelfahrten nachprüfbar</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Größter Umbau im Frontend</li><li>Braucht Endpunkt für Rohdaten oder Quantile</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span>Strecken</span><span>Bahnhöfe</span><span class="on">Analyse</span><span class="live">Live</span></nav></div>
+      <div class="m" id="v4"></div></div>
+  </section>
+
+  <section id="p-v5" hidden>
+    <div class="brief">
+      <h2>5 · Matrix-Vergleich: alle Strecken über den Tag</h2>
+      <div><h4>Idee</h4><p>Die Vergleichsseite zeigt eine Matrix Strecke × Stunde. Ein Klick auf eine Stunde sortiert die Strecken danach. Darunter kleine Vielfache: je Strecke ein Tagesprofil (Band 25–75 %, Median, 90 %) im gleichen Maßstab.</p></div>
+      <div><h4>Für wen</h4><p>Wer flexibel ist und wissen will, welche Verbindung zu welcher Uhrzeit am besten läuft.</p></div>
+      <div><h4>Stärken</h4><ul><li>Muster über alle Strecken sofort sichtbar</li><li>Gleicher Maßstab macht ehrlich vergleichbar</li></ul></div>
+      <div><h4>Schwächen</h4><ul><li>Matrix braucht Breite</li><li>Ersetzt keine Streckendetails</li></ul></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span>Strecken</span><span>Bahnhöfe</span><span class="on">Vergleich</span><span class="live">Live</span></nav></div>
+      <div class="m" id="v5"></div></div>
+  </section>
+
+  <section id="p-live" hidden>
+    <div class="brief">
+      <h2>Live-Tafel als eigene Seite (<code>/live</code>) im Stil der Bahnhofsmonitore</h2>
+      <div><h4>Idee</h4><p>Blau mit weißer Schrift und weißen Trennlinien wie die Anzeiger am Bahnsteig. Verspätung, Gleiswechsel und Ausfälle stehen invertiert in weißen Feldern, Hinweise laufen als Lauftext. Zwei Modi: Abfahrtstafel für den ganzen Bahnhof und Gleisanzeiger für ein Gleis.</p></div>
+      <div><h4>Für wen</h4><p>Kurz vor dem Losgehen, auch als Vollbild auf einem Tablet im Flur.</p></div>
+      <div><h4>Details</h4><ul><li>Pünktliche Züge zeigen keine Zusatzangabe, wie am Bahnhof</li><li>„nur meine Strecken“ blendet fremde Ziele aus</li></ul></div>
+      <div><h4>Verknüpfung</h4><p>Jede Streckenseite hat oben nur noch den kleinen Link „Live: nächster Zug 07:14 +3“.</p></div>
+    </div>
+    <div class="frame"><div class="appbar"><span class="brand"><i></i>Pendelmonitor</span><nav><span>Strecken</span><span>Analyse</span><span>Vergleich</span><span class="live on">Live</span></nav></div>
+      <div class="m" id="live"></div></div>
+  </section>
+
+  <section id="p-fazit" hidden>
+    <div class="brief"><h2>Seitenplan nach Runde 2</h2></div>
+    <div class="fz">
+      <div class="pnl"><h3>Strecken (Start)</h3><p>Sortierbare Streckentabelle aus Runde 1 (Variante 2), kompakt. Klick führt zum Cockpit.</p></div>
+      <div class="pnl"><h3>Strecke = Cockpit A, B oder C</h3><p>Bitte eins auswählen. Kombinierbar: A als Standard und die Fahrplan-Tabelle aus B statt der einfachen Zugliste. C eignet sich als eigene Seite „Mein Pendeln“ für ein gespeichertes Streckenpaar.</p></div>
+      <div class="pnl"><h3>Analyse = Werkbank</h3><p>Zusätzliche Seite mit Filtern. Auswahl im Cockpit („In der Analyse öffnen“) übernimmt Strecke, Tag und Stunde.</p></div>
+      <div class="pnl"><h3>Vergleich = Matrix</h3><p>Ersetzt die heutige Liste auf <code>/stats</code>.</p></div>
+      <div class="pnl"><h3>Live = Bahnhofsmonitor</h3><p>Eigene Seite <code>/live</code> mit Abfahrtstafel und Gleisanzeiger. Nur hier läuft Auto-Refresh.</p></div>
+      <div class="pnl"><h3>Was das Backend braucht</h3><ul>
+        <li>Quantile je Gruppe: <code>/api/routes/{id}/dist?by=hour|weekday|cell|train|day</code> mit p10, p25, p50, p75, p90, Mittel, n, Pünktlich-%</li>
+        <li>Filter <code>wd</code>, <code>h_from</code>, <code>h_to</code>, <code>line</code>, <code>day</code></li>
+        <li>Letzte Fahrten je Zug für die Farbstreifen</li>
+        <li>Für <code>/live</code>: Laufweg (<code>path</code>) für die „über“-Zeile, ist schon gespeichert</li></ul></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(()=>{
+"use strict";
+/* ---------------- helpers ---------------- */
+const WD=['Mo','Di','Mi','Do','Fr','Sa','So'];
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const f1=v=>v==null||isNaN(v)?'–':v.toFixed(1).replace('.',',');
+const f0=v=>v==null||isNaN(v)?'–':Math.round(v).toLocaleString('de-DE');
+const pct=v=>v==null||isNaN(v)?'–':v.toFixed(1).replace('.',',')+' %';
+const pad=n=>String(n).padStart(2,'0');
+const hm=m=>pad(Math.floor(m/60)%24)+':'+pad(m%60);
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const gauss=(x,m,s)=>Math.exp(-((x-m)**2)/(2*s*s));
+
+function pcol(p){
+  if(p==null||isNaN(p))return'var(--muted-bg)';
+  if(p>=92)return'var(--ok)';
+  if(p>=80)return`color-mix(in oklab, var(--ok) ${((p-80)/12*100).toFixed(0)}%, var(--warn))`;
+  if(p>=62)return`color-mix(in oklab, var(--warn) ${((p-62)/18*100).toFixed(0)}%, var(--bad))`;
+  return'var(--bad)';
+}
+const tint=(c,a)=>`color-mix(in oklab, ${c} ${a}%, var(--surface))`;
+function dcol(d){if(d==null)return'var(--text-3)';if(d>=15)return'var(--bad)';if(d>5)return'var(--warn)';return'var(--text)';}
+function ppill(p){const c=p>=90?'ok':p>=75?'warn':'bad';return`<span class="pill p-${c}">${pct(p)}</span>`;}
+function pbar(p){return`<span class="pbar"><i><s style="width:${Math.max(0,Math.min(100,p||0))}%;background:${pcol(p)}"></s></i><span class="num">${pct(p)}</span></span>`;}
+function lineTag(line,cat){return`<span class="ln ln-${cat}">${esc(line)}</span>`;}
+
+/* --------------- data: real route list + simulated trips --------------- */
+const ROUTES=[
+ [1,'Stuttgart-Vaihingen','Esslingen(Neckar)',3.3,14.5],[2,'Esslingen(Neckar)','Stuttgart-Vaihingen',2.3,12.3],
+ [3,'Stuttgart Hbf','Göppingen',2.8,13.2],[4,'Göppingen','Stuttgart Hbf',4.7,19.3],
+ [5,'Esslingen(Neckar)','Göppingen',3.8,18.3],[6,'Göppingen','Esslingen(Neckar)',3.7,17.4],
+ [7,'Plochingen','Esslingen(Neckar)',3.6,17.0],[8,'Esslingen(Neckar)','Plochingen',4.5,24.3],
+ [9,'Plochingen','Göppingen',3.6,18.0],[10,'Göppingen','Plochingen',3.7,17.1],
+ [11,'Esslingen(Neckar)','Stuttgart Hbf',4.0,19.6],[12,'Stuttgart Hbf','Esslingen(Neckar)',3.1,15.0],
+ [13,'Kirchheim(Teck)','Esslingen(Neckar)',2.1,12.0],[14,'Esslingen(Neckar)','Kirchheim(Teck)',4.0,23.7],
+ [15,'Esslingen(Neckar)','Oberesslingen',4.2,24.8],[16,'Oberesslingen','Esslingen(Neckar)',2.1,10.6],
+ [17,'Metzingen(Württ)','Esslingen(Neckar)',4.9,19.3],[18,'Esslingen(Neckar)','Metzingen(Württ)',6.3,34.0],
+ [19,'Bielefeld Hbf','Berlin Hbf',21.2,70.7],[20,'Berlin Hbf','Bielefeld Hbf',8.4,37.5]
+].map(([id,from,to,avg,late])=>({id,from,to,avg,late,name:`${from} → ${to}`}));
+const DAYS=42, START=new Date(2026,9,10); // 10.10.2026 .. 20.11.2026
+const CAUSES=[['Verzögerung im Betriebsablauf',30],['Vorausfahrender Zug',18],['Reparatur an der Strecke',11],['Bauarbeiten',10],['Signalstörung',8],['Verspätung aus vorheriger Fahrt',9],['Polizeieinsatz',4],['Personen im Gleis',4],['Unwetter',3],['Notarzteinsatz',3]];
+const causeTot=CAUSES.reduce((a,c)=>a+c[1],0);
+const hourLoad=h=>0.7+0.75*gauss(h,7.6,1.1)+1.0*gauss(h,17.1,1.5)+0.2*gauss(h,12.5,2)+0.25*gauss(h,22.5,1);
+const wdLoad=[1.05,0.98,1.0,1.1,1.32,0.78,0.66];
+function schedFor(r){
+  if(r.id>=19)return[{line:'ICE 10',cat:'ICE',every:60,start:6*60+31,end:21*60,base:540},{line:'IC 2240',cat:'IC',every:120,start:7*60+12,end:19*60,base:2240}];
+  if(r.id===13||r.id===14)return[{line:'S1',cat:'S',every:30,start:5*60+4,end:24*60,base:37100}];
+  if(r.id===15||r.id===16)return[{line:'S1',cat:'S',every:15,start:5*60+4,end:24*60+30,base:37100}];
+  if(r.id===17||r.id===18)return[{line:'MEX12',cat:'MEX',every:30,start:5*60+21,end:23*60,base:19400},{line:'RE6a',cat:'RE',every:60,start:6*60+48,end:21*60,base:4900}];
+  if(r.id===1||r.id===2)return[{line:'S1',cat:'S',every:15,start:5*60+11,end:24*60+30,base:37100}];
+  const s=[{line:'S1',cat:'S',every:15,start:5*60+14,end:24*60+30,base:37100},{line:'MEX16',cat:'MEX',every:30,start:5*60+2,end:23*60+30,base:19000}];
+  if(r.id<=12)s.push({line:'RE5',cat:'RE',every:60,start:6*60+38,end:22*60,base:4210});
+  return s;
+}
+function simulate(r){
+  const rand=rng(r.id*7919+13), k=r.late/16, out=[];
+  const expo=m=>-Math.log(1-rand()*0.9999)*m;
+  const dayF=[];for(let d=0;d<DAYS;d++){let f=0.85+rand()*0.3;if(rand()<0.07)f*=2.2+rand();dayF.push(f);}
+  for(let d=0;d<DAYS;d++){
+    const date=new Date(START);date.setDate(START.getDate()+d);
+    const wd=(date.getDay()+6)%7;
+    for(const s of schedFor(r)){
+      const lf=s.cat==='RE'||s.cat==='MEX'?1.15:s.cat==='ICE'?1.3:1;
+      let i=0;
+      for(let m=s.start;m<s.end;m+=(wd>=5&&s.cat==='S'?s.every*2:s.every),i++){
+        const h=Math.floor(m/60)%24;
+        const f=hourLoad(h)*wdLoad[wd]*dayF[d]*lf;
+        const canc=rand()<Math.min(.25,0.012*f*k*(r.id>=19?2:1));
+        let delay=null,cause=null;
+        if(!canc){
+          if(rand()<Math.min(.9,0.105*f*k)){delay=6+Math.round(expo(4+5*f*(r.id>=19?3:1)));}
+          else delay=Math.min(5,Math.round(-1+expo(0.9+0.9*f)));
+          if(delay>3){let x=rand()*causeTot;for(const c of CAUSES){x-=c[1];if(x<=0){cause=c[0];break;}}}
+        }else cause=rand()<.5?'Personalmangel':'Technische Störung am Zug';
+        out.push({d,wd,date,h,min:m%1440,line:s.line,cat:s.cat,num:String(s.base+i*2),canc,delay,cause,sev:canc&&rand()<.15});
+      }
+    }
+  }
+  return out;
+}
+const DATA={};ROUTES.forEach(r=>{DATA[r.id]=simulate(r);});
+
+function quant(sorted,p){if(!sorted.length)return null;const i=(sorted.length-1)*p,lo=Math.floor(i),hi=Math.ceil(i);return sorted[lo]+(sorted[hi]-sorted[lo])*(i-lo);}
+function summ(rs){
+  const n=rs.length;let canc=0,ok=0,sum=0;const ds=[];
+  for(const r of rs){if(r.canc){canc++;continue;}ds.push(r.delay);sum+=r.delay;if(r.delay<=5)ok++;}
+  ds.sort((a,b)=>a-b);
+  return{n,canc:n?canc/n*100:null,punct:n?ok/n*100:null,mean:ds.length?sum/ds.length:null,
+    p10:quant(ds,.1),p25:quant(ds,.25),p50:quant(ds,.5),p75:quant(ds,.75),p90:quant(ds,.9),max:ds.length?ds[ds.length-1]:null,late15:n?ds.filter(x=>x>15).length/n*100:null};
+}
+function groupBy(rs,fn){const m=new Map();for(const r of rs){const k=fn(r);if(!m.has(k))m.set(k,[]);m.get(k).push(r);}return m;}
+function byHour(rs,from=4,to=24){const g=groupBy(rs,r=>r.h);const out=[];for(let h=from;h<to;h++)out.push({label:String(h),key:h,...summ(g.get(h)||[])});return out;}
+function byWd(rs){const g=groupBy(rs,r=>r.wd);return WD.map((l,i)=>({label:l,key:i,...summ(g.get(i)||[])}));}
+function byTrain(rs){
+  const g=groupBy(rs,r=>r.line+'|'+r.num);
+  return[...g.values()].map(v=>{const s=summ(v);const c=new Map();v.forEach(x=>x.cause&&c.set(x.cause,(c.get(x.cause)||0)+1));
+    const top=[...c].sort((a,b)=>b[1]-a[1])[0];return{line:v[0].line,cat:v[0].cat,num:v[0].num,min:v[0].min,cause:top?top[0]:'–',...s};});
+}
+function causesOf(rs){const c=new Map();rs.forEach(r=>{if(r.cause&&(r.canc||r.delay>5))c.set(r.cause,(c.get(r.cause)||0)+1);});return[...c].sort((a,b)=>b[1]-a[1]);}
+function daily(rs){const g=groupBy(rs,r=>r.d);const o=[];for(let d=0;d<DAYS;d++)o.push(summ(g.get(d)||[]).punct);return o;}
+const periodFilter=(rs,days)=>rs.filter(r=>r.d>=DAYS-days);
+const worstHour=rs=>{let w=null;const g=groupBy(rs,r=>r.wd*100+r.h);for(const[k,v]of g){if(v.length<8)continue;const s=summ(v);if(!w||s.punct<w.punct)w={wd:Math.floor(k/100),h:k%100,punct:s.punct};}return w;};
+
+/* --------------- charts (rendered at real pixel width) --------------- */
+const ro=new ResizeObserver(es=>{for(const e of es){const el=e.target,w=Math.floor(e.contentRect.width);if(w>0&&w!==el._w){el._w=w;el.innerHTML=el._draw(w);}}});
+function chart(el,fn){el._draw=fn;el._w=0;ro.observe(el);if(el.clientWidth>0){el._w=el.clientWidth;el.innerHTML=fn(el.clientWidth);}}
+function niceMax(v){const s=[5,10,15,20,30,45,60,90,120,180];return s.find(x=>x>=v)||Math.ceil(v/60)*60;}
+function ticks(max){const st=max<=10?2:max<=20?5:max<=60?10:max<=120?30:60;const o=[];for(let t=0;t<=max;t+=st)o.push(t);return o;}
+
+function boxplot(w,groups,o={}){
+  const h=o.h||190,pl=30,pr=6,pt=8,pb=o.sub?32:20,ymin=-1;
+  const yMax=o.yMax||niceMax(Math.max(6,...groups.map(g=>g.p90||0)));
+  const iw=w-pl-pr,ih=h-pt-pb,y=v=>pt+ih-(Math.max(ymin,Math.min(yMax,v))-ymin)/(yMax-ymin)*ih;
+  let s=`<svg width="${w}" height="${h}" role="img" aria-label="${esc(o.aria||'Boxplot Verspätung')}">`;
+  for(const t of ticks(yMax)){s+=`<line x1="${pl}" x2="${w-pr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--border)" stroke-width="1"/><text x="${pl-5}" y="${y(t)+3.5}" font-size="10" text-anchor="end">${t}</text>`;}
+  s+=`<line x1="${pl}" x2="${w-pr}" y1="${y(5.5)}" y2="${y(5.5)}" stroke="var(--bad)" stroke-dasharray="3 3" stroke-width="1" opacity=".7"/>`;
+  const n=groups.length,step=iw/n,bw=Math.max(4,Math.min(22,step*.58));
+  groups.forEach((g,i)=>{
+    const cx=pl+step*(i+.5);
+    if(g.n&&g.p50!=null){
+      const c=pcol(g.punct),sel=o.sel===g.key;
+      s+=`<g><title>${esc(o.title?o.title(g):g.label)} · ${g.n} Fahrten · ${pct(g.punct)} pünktlich · Median ${f1(g.p50)} min · 25–75 %: ${f1(g.p25)}–${f1(g.p75)} · 10–90 %: ${f1(g.p10)}–${f1(g.p90)} min</title>`;
+      if(sel)s+=`<rect x="${cx-step/2+1}" y="${pt}" width="${step-2}" height="${ih}" fill="var(--accent-soft)"/>`;
+      if(o.range&&g.key>=o.range[0]&&g.key<o.range[1])s+=`<rect x="${cx-step/2}" y="${pt}" width="${step}" height="${ih}" fill="var(--accent-soft)"/>`;
+      s+=`<line x1="${cx}" x2="${cx}" y1="${y(g.p10)}" y2="${y(g.p90)}" stroke="var(--text-3)" stroke-width="1"/>`;
+      s+=`<line x1="${cx-bw/4}" x2="${cx+bw/4}" y1="${y(g.p90)}" y2="${y(g.p90)}" stroke="var(--text-3)"/>`;
+      s+=`<rect x="${cx-bw/2}" y="${y(g.p75)}" width="${bw}" height="${Math.max(1.5,y(g.p25)-y(g.p75))}" rx="2" fill="${tint(c,38)}" stroke="${c}" stroke-width="1"/>`;
+      s+=`<line x1="${cx-bw/2}" x2="${cx+bw/2}" y1="${y(g.p50)}" y2="${y(g.p50)}" stroke="var(--text)" stroke-width="2"/>`;
+      if(o.mean)s+=`<circle cx="${cx}" cy="${y(g.mean)}" r="2" fill="var(--accent)"/>`;
+      if(g.p90>yMax)s+=`<text x="${cx}" y="${pt+8}" font-size="9" text-anchor="middle">↑${Math.round(g.p90)}</text>`;
+      s+=`</g>`;
+    }
+    const lbl=(n>16&&i%2)?'':g.label;
+    s+=`<text x="${cx}" y="${h-pb+13}" font-size="10.5" text-anchor="middle" style="fill:var(--text-2)">${esc(lbl)}</text>`;
+    if(o.sub&&g.n)s+=`<text x="${cx}" y="${h-pb+26}" font-size="9" text-anchor="middle" style="fill:${pcol(g.punct)}">${n>16?'':Math.round(g.punct)+'%'}</text>`;
+  });
+  s+=`<text x="4" y="${pt+8}" font-size="9.5">min</text></svg>`;return s;
+}
+function miniBox(g,w=110,max=30){
+  if(!g.n||g.p50==null)return'';const h=16,x=v=>2+(Math.max(-1,Math.min(max,v))+1)/(max+1)*(w-4);const c=pcol(g.punct);
+  return`<svg width="${w}" height="${h}" aria-hidden="true"><line x1="${x(5.5)}" x2="${x(5.5)}" y1="0" y2="${h}" stroke="var(--bad)" stroke-dasharray="2 2" opacity=".6"/><line x1="${x(g.p10)}" x2="${x(g.p90)}" y1="8" y2="8" stroke="var(--text-3)"/><rect x="${x(g.p25)}" y="3" width="${Math.max(2,x(g.p75)-x(g.p25))}" height="10" rx="2" fill="${tint(c,40)}" stroke="${c}"/><line x1="${x(g.p50)}" x2="${x(g.p50)}" y1="2" y2="14" stroke="var(--text)" stroke-width="2"/>${g.p90>max?`<text x="${w-1}" y="12" font-size="9" text-anchor="end">›</text>`:''}</svg>`;
+}
+function spark(vals,w=90,h=22){
+  const v=vals.map(x=>x==null?null:x),lo=50,hi=100,x=i=>1+i/(v.length-1)*(w-2),y=p=>h-2-(Math.max(lo,Math.min(hi,p))-lo)/(hi-lo)*(h-4);
+  let d='',a='';v.forEach((p,i)=>{if(p==null)return;d+=(d?'L':'M')+x(i).toFixed(1)+','+y(p).toFixed(1);});
+  a=d+`L${x(v.length-1)},${h}L${x(0)},${h}Z`;const last=v[v.length-1];
+  return`<svg width="${w}" height="${h}" aria-hidden="true"><path d="${a}" fill="${tint('var(--accent)',14)}" stroke="none"/><path d="${d}" fill="none" stroke="var(--accent)" stroke-width="1.3"/><circle cx="${x(v.length-1)}" cy="${y(last??75)}" r="2.2" fill="${pcol(last)}"/></svg>`;
+}
+function weekly(vals){const o=[];for(let i=0;i<vals.length;i+=7){const s=vals.slice(i,i+7).filter(x=>x!=null);o.push(s.length?s.reduce((a,b)=>a+b,0)/s.length:null);}return o;}
+function trendChart(w,vals,o={}){
+  const h=o.h||120,pl=30,pr=8,pt=8,pb=18,lo=40,hi=100,iw=w-pl-pr,ih=h-pt-pb;
+  const x=i=>pl+i/(vals.length-1)*iw,y=p=>pt+ih-(Math.max(lo,Math.min(hi,p))-lo)/(hi-lo)*ih;
+  let s=`<svg width="${w}" height="${h}" role="img" aria-label="Pünktlichkeit je Tag">`;
+  for(const t of[40,60,80,100])s+=`<line x1="${pl}" x2="${w-pr}" y1="${y(t)}" y2="${y(t)}" stroke="var(--border)"/><text x="${pl-5}" y="${y(t)+3.5}" font-size="10" text-anchor="end">${t}%</text>`;
+  const bw=Math.max(2,iw/vals.length-2);
+  vals.forEach((p,i)=>{if(p==null)return;const d=new Date(START);d.setDate(START.getDate()+i);s+=`<rect x="${x(i)-bw/2}" y="${y(p)}" width="${bw}" height="${y(lo)-y(p)}" rx="1" fill="${tint(pcol(p),70)}"><title>${d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}: ${pct(p)}</title></rect>`;});
+  for(let i=0;i<vals.length;i+=7){const d=new Date(START);d.setDate(START.getDate()+i);s+=`<text x="${x(i)}" y="${h-4}" font-size="10" text-anchor="middle">${d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}</text>`;}
+  return s+'</svg>';
+}
+function ribbon(w,hrs,yMax,h=70){
+  const pl=2,pr=2,pt=4,pb=12,iw=w-pl-pr,ih=h-pt-pb,valid=hrs.filter(g=>g.n>=4);
+  const x=hh=>pl+(hh-4)/19*iw,y=v=>pt+ih-(Math.max(-1,Math.min(yMax,v))+1)/(yMax+1)*ih;
+  let band='',med='',p90='';
+  valid.forEach((g,i)=>{band+=(i?'L':'M')+x(g.key).toFixed(1)+','+y(g.p75).toFixed(1);med+=(i?'L':'M')+x(g.key).toFixed(1)+','+y(g.p50).toFixed(1);p90+=(i?'L':'M')+x(g.key).toFixed(1)+','+y(g.p90).toFixed(1);});
+  [...valid].reverse().forEach(g=>{band+='L'+x(g.key).toFixed(1)+','+y(g.p25).toFixed(1);});
+  let s=`<svg width="${w}" height="${h}" aria-hidden="true"><line x1="${pl}" x2="${w-pr}" y1="${y(5.5)}" y2="${y(5.5)}" stroke="var(--bad)" stroke-dasharray="2 3" opacity=".6"/>`;
+  s+=`<path d="${band}Z" fill="${tint('var(--accent)',22)}"/><path d="${p90}" fill="none" stroke="var(--text-3)" stroke-dasharray="2 2"/><path d="${med}" fill="none" stroke="var(--accent)" stroke-width="1.6"/>`;
+  for(const t of[6,12,18])s+=`<text x="${x(t)}" y="${h-1}" font-size="9" text-anchor="middle">${t}</text>`;
+  return s+'</svg>';
+}
+function heatmap(el,rs,o={}){
+  const metric=o.metric||'punct',hFrom=o.from??4,hTo=o.to??24,g=groupBy(rs,r=>r.wd*100+r.h);
+  let s=`<div class="heat" style="grid-template-columns:22px repeat(${hTo-hFrom},minmax(10px,1fr))"><span></span>`;
+  for(let h=hFrom;h<hTo;h++)s+=`<span class="hl">${h%2===0?h:''}</span>`;
+  WD.forEach((l,wd)=>{s+=`<span class="rl">${l}</span>`;for(let h=hFrom;h<hTo;h++){const v=g.get(wd*100+h);const st=v&&v.length>=3?summ(v):null;
+    let c='var(--muted-bg)';if(st){c=metric==='punct'?pcol(st.punct):pcol(100-(metric==='p50'?st.p50*4:st.p90*1.6));}
+    const sel=o.sel&&o.sel.wd===wd&&o.sel.h===h;
+    s+=`<button type="button" class="c${sel?' sel':''}" data-wd="${wd}" data-h="${h}" style="background:${st?tint(c,82):c}" aria-label="${l} ${h} Uhr${st?': '+pct(st.punct)+' pünktlich':''}"></button>`;}});
+  el.innerHTML=s+'</div>';
+  el.onclick=e=>{const b=e.target.closest('.c');if(!b)return;o.onPick&&o.onPick(+b.dataset.wd,+b.dataset.h,g.get(+b.dataset.wd*100+ +b.dataset.h)||[]);};
+}
+function hist(rs){
+  const n=rs.length||1,b=[['Ausfall',r=>r.canc,'var(--fail)'],['≤ 0 min',r=>!r.canc&&r.delay<=0,'var(--ok)'],['1–2',r=>!r.canc&&r.delay>=1&&r.delay<=2,'var(--ok)'],['3–5',r=>!r.canc&&r.delay>=3&&r.delay<=5,tint('var(--ok)',60)],['6–10',r=>!r.canc&&r.delay>=6&&r.delay<=10,'var(--warn)'],['11–20',r=>!r.canc&&r.delay>=11&&r.delay<=20,tint('var(--bad)',75)],['21–60',r=>!r.canc&&r.delay>=21&&r.delay<=60,'var(--bad)'],['> 60',r=>!r.canc&&r.delay>60,'var(--bad)']];
+  const c=b.map(x=>rs.filter(x[1]).length),mx=Math.max(...c)||1;
+  return`<div class="hb">${b.map((x,i)=>`<span class="small">${x[0]}</span><i style="width:${(c[i]/mx*100).toFixed(1)}%;background:${x[2]}"></i><span class="v small">${(c[i]/n*100).toFixed(1).replace('.',',')} %</span>`).join('')}</div>`;
+}
+function causeBars(rs,limit=6){
+  const c=causesOf(rs).slice(0,limit),mx=c[0]?.[1]||1;
+  return`<div class="hb" style="grid-template-columns:minmax(0,1.3fr) 1fr auto">${c.map(([k,v])=>`<span class="small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(k)}">${esc(k)}</span><i style="width:${(v/mx*100).toFixed(1)}%;background:var(--text-3);opacity:.55"></i><span class="v small">${v}</span>`).join('')}</div>`;
+}
+
+/* --------------- sortable table --------------- */
+function table(el,cfg){
+  const st={key:cfg.key,dir:cfg.dir||'desc',open:null,limit:cfg.limit||Infinity};
+  function sorted(){
+    const c=cfg.cols.find(c=>c.key===st.key),sv=c.sort||(r=>r[c.key]),m=st.dir==='asc'?1:-1;
+    return[...cfg.rows].sort((a,b)=>{const x=sv(a),y=sv(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return-1;
+      return(typeof x==='string'?x.localeCompare(y,'de',{numeric:true}):x-y)*m;});
+  }
+  function draw(){
+    const rows=sorted(),shown=rows.slice(0,st.limit);
+    let s=`<div class="tw" style="${cfg.maxH?`max-height:${cfg.maxH}px`:''}"><table class="t"><thead><tr>`;
+    for(const c of cfg.cols){const as=c.key===st.key?(st.dir==='asc'?'ascending':'descending'):null;
+      s+=`<th class="${c.num?'r':''}" ${as?`aria-sort="${as}"`:''} ${c.w?`style="width:${c.w}"`:''}><button type="button" data-k="${c.key}" title="${esc(c.tip||'Nach '+c.label+' sortieren')}">${esc(c.label)}</button></th>`;}
+    s+='</tr></thead><tbody>';
+    shown.forEach((r,i)=>{const id=String(cfg.id?cfg.id(r):i),open=st.open===id;
+      s+=`<tr data-id="${esc(id)}" class="${cfg.expand?'click':''}${open?' open':''}">`+cfg.cols.map(c=>`<td class="${c.num?'r':''}">${c.render?c.render(r):esc(r[c.key]??'–')}</td>`).join('')+'</tr>';
+      if(open&&cfg.expand)s+=`<tr class="detail"><td colspan="${cfg.cols.length}"><div data-exp="${esc(id)}"></div></td></tr>`;});
+    s+='</tbody>';
+    if(cfg.foot)s+=`<tfoot><tr>${cfg.foot(rows)}</tr></tfoot>`;
+    s+='</table></div>';
+    if(rows.length>shown.length)s+=`<div class="row" style="justify-content:center;padding:6px"><button class="btn" data-more>${rows.length-shown.length} weitere anzeigen</button></div>`;
+    el.innerHTML=s;
+    if(st.open!=null&&cfg.expand){const box=el.querySelector('[data-exp]');const r=rows.find(r=>String(cfg.id(r))===String(st.open));if(box&&r)cfg.expand(box,r);}
+    cfg.after&&cfg.after(el);
+  }
+  el.onclick=e=>{
+    const b=e.target.closest('th button');
+    if(b){const k=b.dataset.k,c=cfg.cols.find(c=>c.key===k);if(st.key===k)st.dir=st.dir==='asc'?'desc':'asc';else{st.key=k;st.dir=c.num?(c.asc?'asc':'desc'):'asc';}draw();el.querySelector(`th button[data-k="${k}"]`)?.focus();return;}
+    if(e.target.closest('[data-more]')){st.limit+=cfg.limit||100;draw();return;}
+    const tr=e.target.closest('tr[data-id]');
+    if(tr&&cfg.expand){st.open=st.open===tr.dataset.id?null:tr.dataset.id;draw();}
+  };
+  draw();return{set(rows){cfg.rows=rows;draw();}};
+}
+const trainCols=(extra=[])=>[
+  {key:'min',label:'Plan',num:true,asc:true,render:r=>`<b class="num">${hm(r.min)}</b>`},
+  {key:'line',label:'Linie',render:r=>lineTag(r.line,r.cat)},
+  {key:'num',label:'Zug',render:r=>`<span class="muted num">${r.num}</span>`},
+  {key:'n',label:'Fahrten',num:true,render:r=>f0(r.n)},
+  {key:'punct',label:'Pünktlich',num:true,asc:true,render:r=>ppill(r.punct)},
+  {key:'p50',label:'Median',num:true,render:r=>`<span style="color:${dcol(r.p50)}">${f1(r.p50)}</span>`},
+  {key:'p90',label:'90 %',num:true,tip:'9 von 10 Fahrten sind höchstens so spät',render:r=>`<span style="color:${dcol(r.p90)}">${f1(r.p90)}</span>`},
+  {key:'max',label:'Max',num:true,render:r=>f0(r.max)},
+  {key:'canc',label:'Ausfälle',num:true,render:r=>r.canc?`<span style="color:var(--fail)">${pct(r.canc)}</span>`:'<span class="muted">0</span>'},
+  {key:'box',label:'Verteilung 0–30 min',sort:r=>r.p75,render:r=>miniBox(r)},
+  ...extra];
+
+/* ================= V1 Cockpit ================= */
+function renderV1(){
+  const el=document.getElementById('v1');const st={route:8,days:14,kind:'dep',hm:'punct'};
+  el.innerHTML=`<div class="row" style="margin-bottom:8px">
+     <select class="in" id="v1-route" aria-label="Strecke">${ROUTES.map(r=>`<option value="${r.id}" ${r.id===8?'selected':''}>${esc(r.name)}</option>`).join('')}</select>
+     <div class="seg" id="v1-days" role="group" aria-label="Zeitraum">${[[7,'7 Tage'],[14,'14 Tage'],[42,'Alles']].map(([d,l])=>`<button type="button" data-d="${d}" aria-pressed="${d===14}">${l}</button>`).join('')}</div>
+     <div class="seg" role="group" aria-label="Abfahrt oder Ankunft"><button type="button" aria-pressed="true">Abfahrt</button><button type="button" aria-pressed="false">Ankunft am Ziel</button></div>
+     <span class="sp" style="flex:1"></span><span class="small muted">Live: nächster Zug <b class="num" style="color:var(--text)">07:14</b> <span style="color:var(--warn)">+3</span> · <a href="#live" style="color:var(--accent)">zur Tafel</a></span></div>
+   <div class="kstrip" id="v1-k"></div>
+   <div class="g12" style="margin-top:8px">
+     <div class="pnl s8"><div class="ph"><h3>Verspätung je Abfahrtsstunde</h3><span class="sp"></span><span class="small muted">Box 25–75 %, Strich Median, Punkt Ø, Whisker 10–90 % · <span style="color:var(--bad)">- - 5-min-Grenze</span> · Zahl unten = % pünktlich</span></div><div class="chart" id="v1-hour"></div></div>
+     <div class="pnl s4"><div class="ph"><h3>Je Wochentag</h3></div><div class="chart" id="v1-wd"></div></div>
+     <div class="pnl s8"><div class="ph"><h3>Wochentag × Stunde</h3><span class="sp"></span><div class="seg" id="v1-hm" role="group" aria-label="Kennzahl der Heatmap"><button type="button" data-m="punct" aria-pressed="true">Pünktlich %</button><button type="button" data-m="p50" aria-pressed="false">Median</button><button type="button" data-m="p90" aria-pressed="false">90 %</button></div></div><div id="v1-heat"></div><div class="legend"><span>schlecht</span><span class="scale"></span><span>gut</span><span>· grau = keine Fahrten · Feld anklicken</span></div><div class="info" id="v1-hinfo"></div></div>
+     <div class="pnl s4"><div class="ph"><h3>Verteilung</h3></div><div id="v1-dist"></div><div class="ph" style="margin-top:10px"><h3>Gründe bei &gt; 5 min</h3></div><div id="v1-cause"></div></div>
+     <div class="pnl s12"><div class="ph"><h3>Pünktlichkeit je Tag</h3></div><div class="chart" id="v1-trend"></div></div>
+     <div class="pnl s12"><div class="ph"><h3>Züge</h3><span class="small muted" id="v1-tn"></span><span class="sp"></span><span class="small muted">Spaltenkopf anklicken zum Sortieren</span></div><div id="v1-trains"></div></div>
+   </div>`;
+  const draw=()=>{
+    const all=DATA[st.route],rs=periodFilter(all,st.days),s=summ(rs);
+    const prev=st.days<42?summ(all.filter(r=>r.d>=DAYS-2*st.days&&r.d<DAYS-st.days)):null;
+    const w=worstHour(rs),tr=byTrain(rs).filter(t=>t.n>=3),best=[...tr].filter(t=>t.n>=6).sort((a,b)=>b.punct-a.punct||b.n-a.n)[0];
+    const dl=(a,b,inv)=>{if(b==null||a==null)return'';const d=a-b,good=inv?d<0:d>0;return`<em class="${Math.abs(d)<.05?'muted':good?'up':'down'}">${d>0?'▲':'▼'} ${f1(Math.abs(d))} ggü. Vorzeitraum</em>`;};
+    document.getElementById('v1-k').innerHTML=[
+      ['Pünktlich ≤ 5 min',`<b style="color:${pcol(s.punct)}">${pct(s.punct)}</b>`,dl(s.punct,prev?.punct)],
+      ['Median',`<b>${f1(s.p50)} min</b>`,dl(s.p50,prev?.p50,true)],
+      ['90 % der Züge unter',`<b>${f1(s.p90)} min</b>`,dl(s.p90,prev?.p90,true)],
+      ['Ausfälle',`<b style="color:var(--fail)">${pct(s.canc)}</b>`,dl(s.canc,prev?.canc,true)],
+      ['&gt; 15 min',`<b>${pct(s.late15)}</b>`,''],
+      ['Fahrten',`<b>${f0(s.n)}</b>`,`<em class="muted">${st.days} Tage</em>`],
+      ['Schlechteste Stunde',`<b>${w?WD[w.wd]+' '+w.h+' Uhr':'–'}</b>`,w?`<em class="down">${pct(w.punct)} pünktlich</em>`:''],
+      ['Bester Zug',`<b>${best?best.line+' '+hm(best.min):'–'}</b>`,best?`<em class="up">${pct(best.punct)}</em>`:'']
+    ].map(([l,v,d])=>`<div class="k"><span>${l}</span>${v}${d||'<em>&nbsp;</em>'}</div>`).join('');
+    const hours=byHour(rs),wds=byWd(rs),yMax=niceMax(Math.max(...hours.map(g=>g.p90||0),...wds.map(g=>g.p90||0)));
+    chart(document.getElementById('v1-hour'),w=>boxplot(w,hours,{yMax,sub:true,mean:true,title:g=>g.label+' Uhr'}));
+    chart(document.getElementById('v1-wd'),w=>boxplot(w,wds,{yMax,sub:true,mean:true}));
+    const hinfo=document.getElementById('v1-hinfo');
+    const pick=(wd,h,v)=>{const x=summ(v);hinfo.innerHTML=v.length?`<b>${WD[wd]} ${h}–${h+1} Uhr:</b> ${x.n} Fahrten · ${pct(x.punct)} pünktlich · Median ${f1(x.p50)} min · 90 % unter ${f1(x.p90)} min · ${pct(x.canc)} Ausfall`:`${WD[wd]} ${h} Uhr: keine Fahrten`;heatmap(document.getElementById('v1-heat'),rs,{metric:st.hm,sel:{wd,h},onPick:pick});};
+    heatmap(document.getElementById('v1-heat'),rs,{metric:st.hm,onPick:pick});hinfo.textContent='';
+    document.getElementById('v1-dist').innerHTML=hist(rs);
+    document.getElementById('v1-cause').innerHTML=causeBars(rs);
+    chart(document.getElementById('v1-trend'),w=>trendChart(w,daily(all)));
+    document.getElementById('v1-tn').textContent=`${tr.length} Züge, mind. 3 Fahrten`;
+    table(document.getElementById('v1-trains'),{cols:trainCols([{key:'cause',label:'Häufigster Grund',render:r=>`<span class="muted">${esc(r.cause)}</span>`}]),rows:tr,key:'punct',dir:'asc',maxH:330,id:r=>r.line+r.num});
+  };
+  el.querySelector('#v1-route').onchange=e=>{st.route=+e.target.value;draw();};
+  el.querySelector('#v1-days').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.days=+b.dataset.d;el.querySelectorAll('#v1-days button').forEach(x=>x.setAttribute('aria-pressed',x===b));draw();};
+  el.querySelector('#v1-hm').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.hm=b.dataset.m;el.querySelectorAll('#v1-hm button').forEach(x=>x.setAttribute('aria-pressed',x===b));heatmap(document.getElementById('v1-heat'),periodFilter(DATA[st.route],st.days),{metric:st.hm});};
+  draw();
+}
+
+/* ================= V2 Table first ================= */
+function renderV2(){
+  const el=document.getElementById('v2');let days=42,q='';
+  el.innerHTML=`<div class="row" style="margin-bottom:8px">
+     <input class="in" id="v2-q" type="search" placeholder="Strecke oder Bahnhof filtern" aria-label="Strecken filtern" style="width:240px">
+     <div class="seg" id="v2-days" role="group" aria-label="Zeitraum">${[[7,'7 T'],[14,'14 T'],[42,'Alles']].map(([d,l])=>`<button type="button" data-d="${d}" aria-pressed="${d===42}">${l}</button>`).join('')}</div>
+     <span class="small muted" id="v2-n"></span><span style="flex:1"></span><span class="small muted">Zeile anklicken für Details</span></div>
+   <div class="pnl" style="padding:0"><div id="v2-t"></div></div>`;
+  const rows=()=>ROUTES.filter(r=>!q||r.name.toLowerCase().includes(q)).map(r=>{const rs=periodFilter(DATA[r.id],days),s=summ(rs),w=worstHour(rs);return{...r,...s,rs,trend:weekly(daily(DATA[r.id])),worst:w,worstKey:w?w.punct:null};});
+  const cols=[
+    {key:'name',label:'Strecke',render:r=>`<b>${esc(r.from)}</b> <span class="muted">→</span> ${esc(r.to)}`},
+    {key:'n',label:'Fahrten',num:true,render:r=>f0(r.n)},
+    {key:'punct',label:'Pünktlich',num:true,asc:true,render:r=>pbar(r.punct)},
+    {key:'mean',label:'Ø',num:true,render:r=>f1(r.mean)},
+    {key:'p50',label:'Median',num:true,render:r=>f1(r.p50)},
+    {key:'p90',label:'90 %',num:true,render:r=>`<span style="color:${dcol(r.p90)}">${f1(r.p90)}</span>`},
+    {key:'box',label:'Verteilung 0–30 min',sort:r=>r.p75,render:r=>miniBox(r,120)},
+    {key:'canc',label:'Ausfälle',num:true,render:r=>`<span style="color:var(--fail)">${pct(r.canc)}</span>`},
+    {key:'trend',label:'6 Wochen',sort:r=>r.trend[r.trend.length-1],tip:'Wochenmittel der Pünktlichkeit, sortiert nach letzter Woche',render:r=>spark(r.trend,80,20)},
+    {key:'worst',label:'Schlechteste Stunde',sort:r=>r.worstKey,asc:true,render:r=>r.worst?`${WD[r.worst.wd]} ${r.worst.h} Uhr <span class="muted">${Math.round(r.worst.punct)} %</span>`:'–'}];
+  const t=table(el.querySelector('#v2-t'),{cols,rows:rows(),key:'punct',dir:'asc',id:r=>r.id,
+    foot:rs=>{const all=summ(rs.flatMap(r=>r.rs));return`<td>Alle ${rs.length} Strecken</td><td class="r">${f0(all.n)}</td><td class="r">${pbar(all.punct)}</td><td class="r">${f1(all.mean)}</td><td class="r">${f1(all.p50)}</td><td class="r">${f1(all.p90)}</td><td>${miniBox(all,120)}</td><td class="r">${pct(all.canc)}</td><td></td><td></td>`;},
+    expand:(box,r)=>{box.innerHTML=`<div class="g12"><div class="s8"><div class="lbl">Je Abfahrtsstunde</div><div class="chart" data-c="h"></div></div><div class="s4"><div class="lbl">Je Wochentag</div><div class="chart" data-c="w"></div></div><div class="s12 row small"><span class="muted">Häufigster Grund:</span> ${esc(causesOf(r.rs)[0]?.[0]||'–')} <span class="muted">· Bester Zug:</span> ${(()=>{const b=byTrain(r.rs).filter(x=>x.n>=3).sort((a,b)=>b.punct-a.punct)[0];return b?`${b.line} ${hm(b.min)} (${Math.round(b.punct)} %)`:'–';})()}<span style="flex:1"></span><a href="#v1" style="color:var(--accent);font-weight:600">Streckenseite öffnen →</a></div></div>`;
+      const hrs=byHour(r.rs),wds=byWd(r.rs),yMax=niceMax(Math.max(...hrs.map(g=>g.p90||0),...wds.map(g=>g.p90||0)));
+      chart(box.querySelector('[data-c=h]'),w=>boxplot(w,hrs,{yMax,h:160,sub:true}));chart(box.querySelector('[data-c=w]'),w=>boxplot(w,wds,{yMax,h:160,sub:true}));}});
+  const upd=()=>{const r=rows();t.set(r);el.querySelector('#v2-n').textContent=`${r.length} Strecken`;};
+  el.querySelector('#v2-q').oninput=e=>{q=e.target.value.trim().toLowerCase();upd();};
+  el.querySelector('#v2-days').onclick=e=>{const b=e.target.closest('button');if(!b)return;days=+b.dataset.d;el.querySelectorAll('#v2-days button').forEach(x=>x.setAttribute('aria-pressed',x===b));upd();};
+  upd();
+}
+
+/* ================= V3 Briefing ================= */
+function say(g){
+  if(!g.n)return'keine Daten';
+  const a=Math.max(0,Math.round(g.p25)),b=Math.round(g.p75),p=Math.round(g.p90);
+  const late=Math.round(100-g.punct),one=late>0?Math.max(2,Math.round(100/late)):null;
+  return`meist ${a===b?a:a+'–'+b} min später, ${p>5?`jeder 10. über ${p} min`:'fast nie über 5 min'}${one&&one<=20?`, jeder ${one}. verspätet oder fällt aus`:''}`;
+}
+function renderV3(){
+  const el=document.getElementById('v3');const st={route:8,win:[[7,9],[16,18]]};
+  const draw=()=>{
+    const r=ROUTES.find(x=>x.id===st.route),rs=periodFilter(DATA[st.route],28),s=summ(rs),w=worstHour(rs);
+    const wk=rs.filter(x=>x.wd<5),hrs=byHour(wk,4,24);
+    const inWin=x=>st.win.some(([a,b])=>x.h>=a&&x.h<b);
+    const tr=byTrain(wk.filter(inWin)).filter(t=>t.n>=4).sort((a,b)=>a.min-b.min);
+    const best=[...tr].sort((a,b)=>b.punct-a.punct)[0],worst=[...tr].sort((a,b)=>a.punct-b.punct)[0];
+    const late=100-s.punct,one=Math.round(100/late);
+    const fri=summ(rs.filter(x=>x.wd===4&&x.h>=15&&x.h<19)),rest=summ(rs.filter(x=>x.wd<4&&x.h>=15&&x.h<19));
+    const verdict=s.punct>=88?'Läuft zuverlässig':s.punct>=78?'Meist pünktlich, mit Ausreißern':s.punct>=65?'Unzuverlässig zu Stoßzeiten':'Häufig verspätet';
+    el.innerHTML=`<div class="brf">
+      <div class="row"><select class="in" id="v3-route" aria-label="Strecke">${ROUTES.map(x=>`<option value="${x.id}" ${x.id===st.route?'selected':''}>${esc(x.name)}</option>`).join('')}</select><span class="small muted">letzte 4 Wochen · Mo–Fr</span></div>
+      <div class="verdict"><div class="big" style="color:${pcol(s.punct)}">${Math.round(s.punct)} %</div><div><h3>${verdict}</h3><p>${Math.round(s.punct)} von 100 Zügen kommen höchstens 5 min zu spät. Jeder ${one}. ist verspätet oder fällt aus.</p></div></div>
+      <ul class="facts">
+        <li><b style="color:var(--bad)">${w?WD[w.wd]+' '+w.h+'h':'–'}</b><span>Schlechteste Stunde: nur ${w?Math.round(w.punct):'–'} % pünktlich.${fri.n&&rest.n&&fri.punct<rest.punct-3?` Freitagnachmittag ist ${Math.round(rest.punct-fri.punct)} Punkte schlechter als Mo–Do.`:''}</span></li>
+        ${best?`<li><b style="color:var(--ok)">${hm(best.min)}</b><span>Verlässlichster Zug in deinen Zeiten: ${lineTag(best.line,best.cat)} ${best.num}, ${Math.round(best.punct)} % pünktlich.</span></li>`:''}
+        ${worst&&worst!==best?`<li><b style="color:var(--warn)">${hm(worst.min)}</b><span>Meiden, wenn möglich: ${lineTag(worst.line,worst.cat)} ${worst.num}, ${say(worst)}.</span></li>`:''}
+        <li><b style="color:var(--fail)">${pct(s.canc)}</b><span>fallen aus. Häufigster Grund für Verspätungen: ${esc(causesOf(rs)[0]?.[0]||'–')}.</span></li>
+      </ul>
+      <div class="pnl"><div class="ph"><h3>Dein Tag, Mo–Fr</h3><span class="sp"></span><span class="small muted">Zahl = Median-Verspätung, Rahmen = deine Pendelzeiten</span></div>
+        <div class="band">${hrs.map(g=>`<div class="${st.win.some(([a,b])=>g.key>=a&&g.key<b)?'win':''}" style="background:${g.n?tint(pcol(g.punct),70):'var(--muted-bg)'}" title="${g.key} Uhr: ${g.n?pct(g.punct)+' pünktlich, '+say(g):'keine Fahrten'}">${g.n?Math.round(g.p50):''}</div>`).join('')}</div>
+        <div class="bandl">${hrs.map(g=>`<span>${g.key%2===0?g.key:''}</span>`).join('')}</div>
+        <div class="row" style="margin-top:8px"><span class="small muted">Pendelzeiten:</span><button class="btn on" type="button">Hin 7–9 Uhr</button><button class="btn on" type="button">Zurück 16–18 Uhr</button><button class="btn" type="button">+ Zeitfenster</button></div></div>
+      <div class="pnl"><div class="ph"><h3>Deine Züge</h3><span class="sp"></span><span class="small muted">in deinen Pendelzeiten</span></div>
+        <div class="trains">${tr.slice(0,8).map(t=>`<div class="trn"><span class="tm">${hm(t.min)}</span>${lineTag(t.line,t.cat)}<span class="muted small">${t.num}</span>${ppill(t.punct)}<div class="say">${say(t)}</div></div>`).join('')}</div></div>
+      <details class="more"><summary>Wochentage im Detail</summary><div class="chart" id="v3-wd" style="margin-top:8px"></div></details>
+      <details class="more"><summary>Heatmap Wochentag × Stunde</summary><div id="v3-heat" style="margin-top:8px"></div><div class="info" id="v3-hinfo"></div></details>
+      <details class="more"><summary>Alle Zahlen</summary><p class="small" style="margin:6px 0 0">Median ${f1(s.p50)} min · 25–75 %: ${f1(s.p25)}–${f1(s.p75)} min · 90 %: ${f1(s.p90)} min · Max ${f0(s.max)} min · ${f0(s.n)} Fahrten. <a href="#v4" style="color:var(--accent)">In der Analyse öffnen →</a></p></details>
+    </div>`;
+    el.querySelector('#v3-route').onchange=e=>{st.route=+e.target.value;draw();};
+    chart(el.querySelector('#v3-wd'),w=>boxplot(w,byWd(rs),{sub:true,h:170}));
+    const hi=el.querySelector('#v3-hinfo');
+    heatmap(el.querySelector('#v3-heat'),rs,{onPick:(wd,h,v)=>{hi.textContent=v.length?`${WD[wd]} ${h} Uhr: ${say(summ(v))}`:'keine Fahrten';}});
+  };
+  draw();
+}
+
+/* ================= V4 Workbench ================= */
+function renderV4(){
+  const el=document.getElementById('v4');
+  const st={route:8,days:42,wd:new Set([0,1,2,3,4,5,6]),hf:4,ht:24,lines:null,canc:true,view:'hour'};
+  const lineList=()=>[...new Set(DATA[st.route].map(r=>r.line))];
+  const filt=()=>periodFilter(DATA[st.route],st.days).filter(r=>st.wd.has(r.wd)&&r.h>=st.hf&&r.h<st.ht&&(!st.lines||st.lines.has(r.line))&&(st.canc||!r.canc));
+  const opts=(a,b,v)=>{let s='';for(let h=a;h<=b;h++)s+=`<option value="${h}" ${h===v?'selected':''}>${h}:00</option>`;return s;};
+  const side=()=>{const all=periodFilter(DATA[st.route],st.days),cnt=groupBy(all,r=>r.line);
+    return`<div class="pnl facet">
+      <div class="grp"><span class="lbl">Strecke</span><select class="in" id="v4-route" aria-label="Strecke">${ROUTES.map(x=>`<option value="${x.id}" ${x.id===st.route?'selected':''}>${esc(x.name)}</option>`).join('')}</select></div>
+      <div class="grp"><span class="lbl">Zeitraum</span><div class="seg" id="v4-days" role="group" aria-label="Zeitraum">${[[7,'7 T'],[14,'14 T'],[28,'4 W'],[42,'Alles']].map(([d,l])=>`<button type="button" data-d="${d}" aria-pressed="${d===st.days}">${l}</button>`).join('')}</div></div>
+      <div class="grp"><span class="lbl">Wochentage</span><div class="wdbtns" id="v4-wd">${WD.map((l,i)=>`<button type="button" class="btn ${st.wd.has(i)?'on':''}" data-i="${i}" aria-pressed="${st.wd.has(i)}">${l}</button>`).join('')}</div>
+        <div class="row"><button class="btn" type="button" data-p="work">Mo–Fr</button><button class="btn" type="button" data-p="we">Sa–So</button><button class="btn" type="button" data-p="all">Alle</button></div></div>
+      <div class="grp"><span class="lbl">Abfahrt zwischen</span><div class="row"><select class="in" id="v4-hf" aria-label="Von Uhrzeit">${opts(0,23,st.hf)}</select><span class="muted">bis</span><select class="in" id="v4-ht" aria-label="Bis Uhrzeit">${opts(1,24,st.ht)}</select></div>
+        <div class="row"><button class="btn" type="button" data-t="6-9">Früh 6–9</button><button class="btn" type="button" data-t="16-19">Abend 16–19</button></div></div>
+      <div class="grp"><span class="lbl">Linien</span>${lineList().map(l=>`<label class="chk"><input type="checkbox" data-l="${esc(l)}" ${!st.lines||st.lines.has(l)?'checked':''}>${esc(l)}<span class="c">${cnt.get(l)?.length||0}</span></label>`).join('')}</div>
+      <div class="grp"><span class="lbl">Ausfälle</span><label class="chk"><input type="checkbox" id="v4-canc" ${st.canc?'checked':''}>als unpünktlich mitzählen</label></div>
+      <button class="btn" type="button" id="v4-reset">Filter zurücksetzen</button>
+    </div>`;};
+  const VIEWS=[['hour','Stunde'],['wd','Wochentag'],['heat','Heatmap'],['dist','Verteilung'],['trains','Züge'],['trips','Einzelfahrten']];
+  el.innerHTML=`<div class="wb"><div id="v4-side"></div><div class="pnl" style="min-width:0"><div class="filterline" id="v4-fl"></div><div class="kstrip" id="v4-k" style="margin-top:6px"></div>
+    <div class="vtabs" role="tablist" id="v4-tabs">${VIEWS.map(([k,l])=>`<button type="button" role="tab" data-v="${k}" aria-selected="${k===st.view}">${l}</button>`).join('')}</div><div id="v4-main"></div></div></div>`;
+  function bindSide(){
+    const s=el.querySelector('#v4-side');s.innerHTML=side();
+    s.querySelector('#v4-route').onchange=e=>{st.route=+e.target.value;st.lines=null;bindSide();upd();};
+    s.querySelector('#v4-days').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.days=+b.dataset.d;bindSide();upd();};
+    s.querySelector('#v4-wd').onclick=e=>{const b=e.target.closest('button');if(!b)return;const i=+b.dataset.i;st.wd.has(i)?st.wd.delete(i):st.wd.add(i);bindSide();upd();};
+    s.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{st.wd=new Set(b.dataset.p==='work'?[0,1,2,3,4]:b.dataset.p==='we'?[5,6]:[0,1,2,3,4,5,6]);bindSide();upd();});
+    s.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const[a,c]=b.dataset.t.split('-').map(Number);st.hf=a;st.ht=c;bindSide();upd();});
+    s.querySelector('#v4-hf').onchange=e=>{st.hf=+e.target.value;if(st.ht<=st.hf)st.ht=st.hf+1;bindSide();upd();};
+    s.querySelector('#v4-ht').onchange=e=>{st.ht=+e.target.value;if(st.ht<=st.hf)st.hf=st.ht-1;bindSide();upd();};
+    s.querySelectorAll('[data-l]').forEach(c=>c.onchange=()=>{st.lines=new Set([...s.querySelectorAll('[data-l]:checked')].map(x=>x.dataset.l));upd();});
+    s.querySelector('#v4-canc').onchange=e=>{st.canc=e.target.checked;upd();};
+    s.querySelector('#v4-reset').onclick=()=>{Object.assign(st,{days:42,wd:new Set([0,1,2,3,4,5,6]),hf:4,ht:24,lines:null,canc:true});bindSide();upd();};
+  }
+  el.querySelector('#v4-tabs').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.view=b.dataset.v;el.querySelectorAll('#v4-tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));main();};
+  let rs=[];
+  function upd(){
+    rs=filt();const s=summ(rs),r=ROUTES.find(x=>x.id===st.route);
+    const wdTxt=st.wd.size===7?'alle Tage':[...st.wd].sort().map(i=>WD[i]).join(', ');
+    el.querySelector('#v4-fl').innerHTML=`<b>${esc(r.name)}</b><span class="tag">${st.days===42?'alle 42 Tage':st.days+' Tage'}</span><span class="tag">${wdTxt}</span><span class="tag">${st.hf}–${st.ht} Uhr</span>${st.lines?`<span class="tag">${[...st.lines].join(', ')||'keine Linie'}</span>`:''}${st.canc?'':'<span class="tag">ohne Ausfälle</span>'}`;
+    el.querySelector('#v4-k').innerHTML=[['Fahrten',f0(s.n)],['Pünktlich',`<span style="color:${pcol(s.punct)}">${pct(s.punct)}</span>`],['Ø',f1(s.mean)+' min'],['Median',f1(s.p50)+' min'],['25–75 %',`${f1(s.p25)}–${f1(s.p75)}`],['90 %',f1(s.p90)+' min'],['Max',f0(s.max)+' min'],['Ausfälle',pct(s.canc)]].map(([l,v])=>`<div class="k"><span>${l}</span><b style="font-size:16px">${v}</b></div>`).join('');
+    main();
+  }
+  function main(){
+    const m=el.querySelector('#v4-main');
+    if(!rs.length){m.innerHTML='<p class="muted">Keine Fahrten für diesen Filter. Wochentage oder Uhrzeit erweitern.</p>';return;}
+    if(st.view==='hour'){m.innerHTML=`<div class="chart"></div><p class="small muted" style="margin:4px 0 0">Punkt = Mittelwert. Hover zeigt alle Quantile.</p>`;const hrs=byHour(rs,st.hf,st.ht);chart(m.firstChild,w=>boxplot(w,hrs,{sub:true,mean:true,h:230,title:g=>g.label+' Uhr'}));
+      m.insertAdjacentHTML('beforeend','<div style="margin-top:8px" id="v4-ht2"></div>');
+      table(m.querySelector('#v4-ht2'),{cols:[{key:'key',label:'Stunde',num:true,asc:true,render:g=>g.key+':00'},{key:'n',label:'Fahrten',num:true},{key:'punct',label:'Pünktlich',num:true,asc:true,render:g=>pbar(g.punct)},{key:'mean',label:'Ø',num:true,render:g=>f1(g.mean)},{key:'p25',label:'25 %',num:true,render:g=>f1(g.p25)},{key:'p50',label:'Median',num:true,render:g=>f1(g.p50)},{key:'p75',label:'75 %',num:true,render:g=>f1(g.p75)},{key:'p90',label:'90 %',num:true,render:g=>f1(g.p90)},{key:'max',label:'Max',num:true,render:g=>f0(g.max)},{key:'canc',label:'Ausfälle',num:true,render:g=>pct(g.canc)}],rows:hrs.filter(g=>g.n),key:'key',dir:'asc',maxH:260});}
+    else if(st.view==='wd'){m.innerHTML='<div class="chart"></div><div style="margin-top:8px"></div>';const w=byWd(rs);chart(m.firstChild,x=>boxplot(x,w,{sub:true,mean:true,h:230}));
+      table(m.lastChild,{cols:[{key:'key',label:'Tag',num:true,asc:true,render:g=>g.label},{key:'n',label:'Fahrten',num:true},{key:'punct',label:'Pünktlich',num:true,asc:true,render:g=>pbar(g.punct)},{key:'p50',label:'Median',num:true,render:g=>f1(g.p50)},{key:'p90',label:'90 %',num:true,render:g=>f1(g.p90)},{key:'canc',label:'Ausfälle',num:true,render:g=>pct(g.canc)}],rows:w.filter(g=>g.n),key:'key',dir:'asc'});}
+    else if(st.view==='heat'){m.innerHTML='<div></div><div class="legend"><span>schlecht</span><span class="scale"></span><span>gut</span><span>· Feld anklicken setzt den Filter auf diesen Tag und diese Stunde</span></div>';
+      heatmap(m.firstChild,rs,{from:st.hf,to:st.ht,onPick:(wd,h)=>{st.wd=new Set([wd]);st.hf=h;st.ht=h+1;st.view='trips';el.querySelectorAll('#v4-tabs button').forEach(x=>x.setAttribute('aria-selected',x.dataset.v==='trips'));bindSide();upd();}});}
+    else if(st.view==='dist'){m.innerHTML=`<div class="g12"><div class="s6"><div class="lbl" style="margin-bottom:6px">Verspätung</div>${hist(rs)}</div><div class="s6"><div class="lbl" style="margin-bottom:6px">Gründe bei &gt; 5 min und Ausfall</div>${causeBars(rs,10)}</div></div>`;}
+    else if(st.view==='trains'){m.innerHTML='<div></div>';table(m.firstChild,{cols:trainCols([{key:'cause',label:'Häufigster Grund',render:r=>`<span class="muted">${esc(r.cause)}</span>`}]),rows:byTrain(rs),key:'punct',dir:'asc',maxH:420});}
+    else{m.innerHTML='<div></div>';table(m.firstChild,{limit:60,maxH:420,key:'date',dir:'desc',rows:rs.map(r=>({...r,ts:r.d*1440+r.min})),cols:[
+      {key:'date',label:'Datum',sort:r=>r.ts,render:r=>`${WD[r.wd]} ${r.date.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}`},
+      {key:'min',label:'Plan',num:true,asc:true,render:r=>hm(r.min)},{key:'line',label:'Linie',render:r=>lineTag(r.line,r.cat)},{key:'num',label:'Zug'},
+      {key:'delay',label:'Verspätung',num:true,sort:r=>r.canc?999:r.delay,render:r=>r.canc?'<span class="pill p-fail">Ausfall</span>':`<span style="color:${dcol(r.delay)};font-weight:600">${r.delay>0?'+':''}${r.delay}</span>`},
+      {key:'cause',label:'Grund',render:r=>`<span class="muted">${esc(r.cause||'')}</span>`}]});}
+  }
+  bindSide();upd();
+}
+
+/* ================= V5 Matrix ================= */
+function renderV5(){
+  const el=document.getElementById('v5');const st={metric:'punct',sort:'all',dir:1,days:42};
+  const H=[];for(let h=5;h<24;h++)H.push(h);
+  const calc=()=>ROUTES.map(r=>{const rs=periodFilter(DATA[r.id],st.days),g=groupBy(rs,x=>x.h);const hrs={};H.forEach(h=>hrs[h]=g.get(h)&&g.get(h).length>=5?summ(g.get(h)):null);return{...r,all:summ(rs),hrs,hourArr:byHour(rs,4,24)};});
+  const val=(s,m)=>s?(m==='punct'?s.punct:m==='p50'?s.p50:s.p90):null;
+  const col=(s,m)=>!s?'var(--muted-bg)':m==='punct'?pcol(s.punct):pcol(100-(m==='p50'?s.p50*4:s.p90*1.6));
+  const fmt=(s,m)=>!s?'':m==='punct'?Math.round(s.punct):Math.round(val(s,m));
+  el.innerHTML=`<div class="row" style="margin-bottom:8px"><span class="lbl">Kennzahl</span><div class="seg" id="v5-m" role="group" aria-label="Kennzahl"><button type="button" data-m="punct" aria-pressed="true">Pünktlich %</button><button type="button" data-m="p50" aria-pressed="false">Median min</button><button type="button" data-m="p90" aria-pressed="false">90 % min</button></div>
+    <div class="seg" id="v5-d" role="group" aria-label="Zeitraum">${[[7,'7 T'],[14,'14 T'],[42,'Alles']].map(([d,l])=>`<button type="button" data-d="${d}" aria-pressed="${d===42}">${l}</button>`).join('')}</div><span style="flex:1"></span><span class="small muted">Stunde oder „Gesamt“ anklicken sortiert die Zeilen</span></div>
+    <div class="pnl"><div class="ph"><h3>Strecke × Abfahrtsstunde</h3></div><div style="overflow-x:auto"><div id="v5-mx"></div></div></div>
+    <div class="ph" style="margin:12px 0 6px"><h3>Tagesprofil je Strecke</h3><span class="sp"></span><span class="small muted">Band = 25–75 %, Linie = Median, gestrichelt = 90 %, rot = 5-min-Grenze · gleicher Maßstab</span></div>
+    <div class="cards" id="v5-cards"></div>`;
+  let data=calc();
+  function draw(){
+    const m=st.metric,better=m==='punct'?-1:1;
+    const key=r=>st.sort==='all'?val(r.all,m):val(r.hrs[st.sort],m);
+    const rows=[...data].sort((a,b)=>{const x=key(a),y=key(b);if(x==null)return 1;if(y==null)return-1;return(x-y)*-better*st.dir;});
+    let s=`<div class="mx" style="grid-template-columns:minmax(150px,220px) repeat(${H.length},minmax(24px,1fr)) 8px 44px"><span></span>`;
+    H.forEach(h=>s+=`<button type="button" class="h ${st.sort===h?'on':''}" data-s="${h}" aria-label="Nach ${h} Uhr sortieren">${h}</button>`);
+    s+=`<span></span><button type="button" class="h ${st.sort==='all'?'on':''}" data-s="all">Gesamt</button>`;
+    rows.forEach(r=>{s+=`<span class="rn" title="${esc(r.name)}">${esc(r.from)} → ${esc(r.to)}</span>`;
+      H.forEach(h=>{const x=r.hrs[h];s+=`<span class="c" style="background:${x?tint(col(x,m),75):'var(--muted-bg)'}" title="${esc(r.name)}, ${h} Uhr: ${x?pct(x.punct)+' pünktlich, Median '+f1(x.p50)+', 90 % '+f1(x.p90)+' min':'zu wenige Fahrten'}">${fmt(x,m)}</span>`;});
+      s+=`<span></span><span class="c" style="background:${tint(col(r.all,m),85)};font-weight:700">${fmt(r.all,m)}</span>`;});
+    el.querySelector('#v5-mx').innerHTML=s+'</div>';
+    const yMax=30;const cards=el.querySelector('#v5-cards');cards.innerHTML=rows.map(r=>`<div class="sm"><div class="top"><span class="nm" title="${esc(r.name)}">${esc(r.from)} → ${esc(r.to)}</span><span class="pv" style="color:${pcol(r.all.punct)}">${Math.round(r.all.punct)} %</span></div><div class="chart" data-r="${r.id}"></div><div class="sub"><span>Median ${f1(r.all.p50)}</span><span>90 % ${f1(r.all.p90)}</span><span>Ausfall ${pct(r.all.canc)}</span></div></div>`).join('');
+    rows.forEach(r=>chart(cards.querySelector(`[data-r="${r.id}"]`),w=>ribbon(w,r.hourArr,yMax)));
+  }
+  el.querySelector('#v5-mx').onclick=e=>{const b=e.target.closest('button.h');if(!b)return;const k=b.dataset.s==='all'?'all':+b.dataset.s;st.dir=st.sort===k?-st.dir:1;st.sort=k;draw();};
+  el.querySelector('#v5-m').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.metric=b.dataset.m;el.querySelectorAll('#v5-m button').forEach(x=>x.setAttribute('aria-pressed',x===b));draw();};
+  el.querySelector('#v5-d').onclick=e=>{const b=e.target.closest('button');if(!b)return;st.days=+b.dataset.d;el.querySelectorAll('#v5-d button').forEach(x=>x.setAttribute('aria-pressed',x===b));data=calc();draw();};
+  draw();
+}
+
+/* ================= Round 2: shared cockpit bits ================= */
+const NOW=7*60+2;
+function dlt(a,b,inv){if(a==null||b==null||isNaN(a)||isNaN(b))return'';const d=a-b;if(Math.abs(d)<.05)return'<i class="dl muted">±0</i>';const good=inv?d<0:d>0;return`<i class="dl ${good?'up':'down'}">${d>0?'▲':'▼'} ${f1(Math.abs(d))}</i>`;}
+const prevOf=(all,days)=>days<42?all.filter(r=>r.d>=Math.max(0,DAYS-2*days)&&r.d<DAYS-days):null;
+function answer(rs,prevRs){
+  const s=summ(rs);if(!s.n)return'<div class="ans muted">Keine Fahrten im Zeitraum.</div>';
+  const prev=prevRs&&prevRs.length?summ(prevRs):null;
+  const w=worstHour(rs),tr=byTrain(rs).filter(t=>t.n>=6),best=[...tr].sort((a,b)=>b.punct-a.punct||b.n-a.n)[0];
+  const one=s.punct<99?Math.max(2,Math.round(100/(100-s.punct))):null;
+  const k=[['Median',f1(s.p50)+' min',dlt(s.p50,prev?.p50,true)],['9 von 10 unter',f1(s.p90)+' min',dlt(s.p90,prev?.p90,true)],['Ausfälle',pct(s.canc),dlt(s.canc,prev?.canc,true)],['über 15 min',pct(s.late15),dlt(s.late15,prev?.late15,true)],['Fahrten',f0(s.n),'']];
+  return`<div class="ans"><div class="ans-big"><b style="color:${pcol(s.punct)}">${Math.round(s.punct)}<small> %</small></b><span>pünktlich ${dlt(s.punct,prev?.punct)}</span></div>
+   <p class="ans-txt">${one?`<b>Jeder ${one}. Zug kommt mehr als 5 min zu spät oder fällt aus.</b> `:'<b>Fast alle Züge pünktlich.</b> '}${w?`Am schlechtesten: <b>${WD[w.wd]} ${w.h}–${w.h+1} Uhr</b> (${Math.round(w.punct)} %). `:''}${best?`Am verlässlichsten: <b>${esc(best.line)} um ${hm(best.min)}</b> (${Math.round(best.punct)} %).`:''}${prev?' <span class="muted">Pfeile: Vergleich mit dem Zeitraum davor.</span>':''}</p>
+   <dl class="ans-k">${k.map(([l,v,d])=>`<div><dt>${l}</dt><dd>${v}${d}</dd></div>`).join('')}</dl></div>`;
+}
+function segBind(seg,fn){seg.onclick=e=>{const b=e.target.closest('button');if(!b)return;seg.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',x===b));fn(b);};}
+function seg(id,label,items,cur){return`<div class="seg" id="${id}" role="group" aria-label="${label}">${items.map(([v,l])=>`<button type="button" data-v="${v}" aria-pressed="${String(v)===String(cur)}">${l}</button>`).join('')}</div>`;}
+const DAYSEG=[[7,'7 Tage'],[14,'14 Tage'],[28,'4 Wochen'],[42,'Alles']];
+function toolbar(id,st,extra=''){return`<div class="tb"><select class="in" id="${id}-route" aria-label="Strecke">${ROUTES.map(r=>`<option value="${r.id}" ${r.id===st.route?'selected':''}>${esc(r.name)}</option>`).join('')}</select>${seg(id+'-days','Zeitraum',DAYSEG,st.days)}${extra}<span class="sp"></span><a class="livechip" href="#live"><i></i>Live: nächster Zug <b>07:14</b> <em>+3</em></a></div>`;}
+function dotCls(r){return!r?'':r.canc?'x':r.delay>15?'b':r.delay>5?'w':'o';}
+const dayLbl=r=>r.date.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'});
+function dotsArr(arr,n=14){const a=arr.slice(-n);let s='<span class="dots">';for(let i=a.length;i<n;i++)s+='<i></i>';for(const r of a)s+=`<i class="${dotCls(r)}" title="${dayLbl(r)}: ${r.canc?'Ausfall':(r.delay>0?'+':'')+r.delay+' min'}"></i>`;return s+'</span>';}
+const DOTLEG='<div class="dotleg"><span><i style="background:var(--ok)"></i>≤ 5 min</span><span><i style="background:var(--warn)"></i>6–15</span><span><i style="background:var(--bad)"></i>&gt; 15</span><span><i style="background:var(--fail)"></i>Ausfall</span><span><i style="background:var(--muted-bg)"></i>keine Fahrt</span></div>';
+function withRuns(rs,minN=2){const g=groupBy(rs,r=>r.line+'|'+r.num);return byTrain(rs).filter(t=>t.n>=minN).map(t=>{const runs=[...g.get(t.line+'|'+t.num)].sort((a,b)=>a.d-b.d);const last=runs.slice(-14);return{...t,runs,bad14:last.filter(r=>r.canc||r.delay>5).length};});}
+const dotsCol={key:'bad14',label:'Letzte 14 Fahrten',tip:'Sortiert nach Anzahl verspäteter Fahrten',render:r=>dotsArr(r.runs)};
+function hbox(w,groups,yMax){
+  const rowH=20,lw=26,rw=38,h=groups.length*rowH+16,x=v=>lw+(Math.max(-1,Math.min(yMax,v))+1)/(yMax+1)*(w-lw-rw);
+  let s=`<svg width="${w}" height="${h}" role="img" aria-label="Boxplot je Wochentag">`;
+  for(const t of ticks(yMax))s+=`<line x1="${x(t)}" x2="${x(t)}" y1="0" y2="${h-14}" stroke="var(--border)"/><text x="${x(t)}" y="${h-3}" font-size="9" text-anchor="middle">${t}</text>`;
+  s+=`<line x1="${x(5.5)}" x2="${x(5.5)}" y1="0" y2="${h-14}" stroke="var(--bad)" stroke-dasharray="3 3" opacity=".7"/>`;
+  groups.forEach((g,i)=>{const cy=i*rowH+rowH/2;s+=`<text x="${lw-6}" y="${cy+3.5}" font-size="10.5" text-anchor="end" style="fill:var(--text-2);font-weight:600">${g.label}</text>`;
+    if(!g.n||g.p50==null)return;const c=pcol(g.punct);
+    s+=`<g><title>${g.label}: ${g.n} Fahrten, ${pct(g.punct)} pünktlich, Median ${f1(g.p50)}, 25–75 % ${f1(g.p25)}–${f1(g.p75)}, 90 % ${f1(g.p90)} min</title><line x1="${x(g.p10)}" x2="${x(g.p90)}" y1="${cy}" y2="${cy}" stroke="var(--text-3)"/><rect x="${x(g.p25)}" y="${cy-6}" width="${Math.max(1.5,x(g.p75)-x(g.p25))}" height="12" rx="2" fill="${tint(c,38)}" stroke="${c}"/><line x1="${x(g.p50)}" x2="${x(g.p50)}" y1="${cy-7}" y2="${cy+7}" stroke="var(--text)" stroke-width="2"/><text x="${w-2}" y="${cy+3.5}" font-size="10" text-anchor="end" style="fill:${c};font-weight:700">${Math.round(g.punct)} %</text></g>`;});
+  return s+'</svg>';
+}
+
+/* joint plot: hour boxplots on top, weekday boxplots right, heatmap in the middle, shared axes */
+function joint(w,rs,sel){
+  const H0=5,H1=24,nh=H1-H0,lw=26,rw=Math.round(Math.max(110,Math.min(210,w*.26))),gap=12,top=124,ax=18,rowH=w<560?20:24;
+  const gw=w-lw-rw-gap,cw=gw/nh,y0=top+ax,yb=y0+rowH*7,h=yb+18;
+  const hrs=byHour(rs,H0,H1),wds=byWd(rs),g=groupBy(rs,r=>r.wd*100+r.h);
+  const yMax=niceMax(Math.max(6,...hrs.map(x=>x.p90||0),...wds.map(x=>x.p90||0)));
+  const cl=v=>Math.max(-1,Math.min(yMax,v)),y=v=>top-8-(cl(v)+1)/(yMax+1)*(top-16);
+  const rx0=lw+gw+gap,rx1=w-38,xs=v=>rx0+(cl(v)+1)/(yMax+1)*(rx1-rx0);
+  const any=sel.wd!=null||sel.h!=null;
+  let s=`<svg width="${w}" height="${h}" role="img" aria-label="Verspätung nach Stunde und Wochentag">`;
+  for(const t of ticks(yMax))s+=`<line x1="${lw}" x2="${lw+gw}" y1="${y(t)}" y2="${y(t)}" stroke="var(--border)"/><text x="${lw-5}" y="${y(t)+3.5}" font-size="9.5" text-anchor="end">${t}</text>`;
+  s+=`<text x="2" y="10" font-size="9.5">min</text><line x1="${lw}" x2="${lw+gw}" y1="${y(5.5)}" y2="${y(5.5)}" stroke="var(--bad)" stroke-dasharray="3 3" opacity=".75"/>`;
+  for(const t of ticks(yMax))s+=`<line x1="${xs(t)}" x2="${xs(t)}" y1="${y0}" y2="${yb}" stroke="var(--border)"/><text x="${xs(t)}" y="${yb+12}" font-size="9" text-anchor="middle">${t}</text>`;
+  s+=`<line x1="${xs(5.5)}" x2="${xs(5.5)}" y1="${y0}" y2="${yb}" stroke="var(--bad)" stroke-dasharray="3 3" opacity=".75"/>`;
+  // corner legend
+  const lx=rx0;s+=`<text x="${lx}" y="16" font-size="10.5" style="fill:var(--text-2);font-weight:700">So lesen</text>`;
+  s+=`<rect x="${lx}" y="26" width="12" height="16" rx="2" fill="${tint('var(--warn)',38)}" stroke="var(--warn)"/><line x1="${lx}" x2="${lx+12}" y1="34" y2="34" stroke="var(--text)" stroke-width="2"/><text x="${lx+18}" y="31" font-size="9.5">Box: mittlere Hälfte</text><text x="${lx+18}" y="42" font-size="9.5">Strich: Median</text>`;
+  s+=`<line x1="${lx+6}" x2="${lx+6}" y1="50" y2="66" stroke="var(--text-3)"/><text x="${lx+18}" y="61" font-size="9.5">Linie: 10–90 %</text>`;
+  s+=`<line x1="${lx}" x2="${lx+12}" y1="76" y2="76" stroke="var(--bad)" stroke-dasharray="3 3"/><text x="${lx+18}" y="79" font-size="9.5">5-min-Grenze</text>`;
+  s+=`<text x="${lx}" y="${top+12}" font-size="9.5" style="fill:var(--text-2);font-weight:700">je Wochentag →</text>`;
+  hrs.forEach((g1,i)=>{const cx=lw+cw*(i+.5),on=sel.h===g1.key&&sel.wd==null;
+    s+=`<g class="hit" data-h="${g1.key}"><rect x="${lw+cw*i}" y="0" width="${cw}" height="${top+ax}" fill="${on?'var(--accent-soft)':'transparent'}"/>`;
+    if(g1.n&&g1.p50!=null){const c=pcol(g1.punct),bw=Math.max(3,Math.min(15,cw*.62));
+      s+=`<title>${g1.key}–${g1.key+1} Uhr · ${g1.n} Fahrten · ${pct(g1.punct)} pünktlich · Median ${f1(g1.p50)} · 25–75 %: ${f1(g1.p25)}–${f1(g1.p75)} · 90 %: ${f1(g1.p90)} min</title>`;
+      s+=`<line x1="${cx}" x2="${cx}" y1="${y(g1.p10)}" y2="${y(g1.p90)}" stroke="var(--text-3)"/><rect x="${cx-bw/2}" y="${y(g1.p75)}" width="${bw}" height="${Math.max(1.5,y(g1.p25)-y(g1.p75))}" rx="2" fill="${tint(c,38)}" stroke="${c}"/><line x1="${cx-bw/2}" x2="${cx+bw/2}" y1="${y(g1.p50)}" y2="${y(g1.p50)}" stroke="var(--text)" stroke-width="2"/>`;
+      if(g1.p90>yMax)s+=`<text x="${cx}" y="9" font-size="8.5" text-anchor="middle">↑${Math.round(g1.p90)}</text>`;}
+    s+=`<text x="${cx}" y="${top+12}" font-size="10" text-anchor="middle" style="fill:${sel.h===g1.key?'var(--accent)':'var(--text-2)'};font-weight:${sel.h===g1.key?700:400}">${(cw<17&&g1.key%2)?'':g1.key}</text></g>`;});
+  WD.forEach((l,wd)=>{const yy=y0+wd*rowH,onR=sel.wd===wd&&sel.h==null;
+    s+=`<g class="hit" data-wd="${wd}"><rect x="0" y="${yy}" width="${lw-2}" height="${rowH}" fill="transparent"/><text x="${lw-6}" y="${yy+rowH/2+3.5}" font-size="10.5" text-anchor="end" style="fill:${sel.wd===wd?'var(--accent)':'var(--text-2)'};font-weight:700">${l}</text></g>`;
+    for(let i=0;i<nh;i++){const hh=H0+i,v=g.get(wd*100+hh),st=v&&v.length>=3?summ(v):null;
+      const inSel=(sel.wd==null||sel.wd===wd)&&(sel.h==null||sel.h===hh),cell=sel.wd===wd&&sel.h===hh;
+      s+=`<rect class="hit" data-wd="${wd}" data-h="${hh}" x="${(lw+cw*i+1).toFixed(1)}" y="${yy+1}" width="${Math.max(1,cw-2).toFixed(1)}" height="${rowH-2}" rx="2" fill="${st?tint(pcol(st.punct),82):'var(--muted-bg)'}" opacity="${any&&!inSel?.35:1}" ${cell?'stroke="var(--text)" stroke-width="2"':''}><title>${l} ${hh}–${hh+1} Uhr${st?` · ${st.n} Fahrten · ${pct(st.punct)} pünktlich · Median ${f1(st.p50)} min · 90 % ${f1(st.p90)} min`:' · keine Fahrten'}</title></rect>`;}
+    const gw2=wds[wd];
+    if(gw2.n&&gw2.p50!=null){const c=pcol(gw2.punct),cy=yy+rowH/2,bh=Math.min(12,rowH-8);
+      s+=`<g class="hit" data-wd="${wd}"><rect x="${rx0-4}" y="${yy}" width="${w-rx0+4}" height="${rowH}" fill="${onR?'var(--accent-soft)':'transparent'}"/><title>${l}: ${gw2.n} Fahrten · ${pct(gw2.punct)} pünktlich · Median ${f1(gw2.p50)} · 90 % ${f1(gw2.p90)} min</title><line x1="${xs(gw2.p10)}" x2="${xs(gw2.p90)}" y1="${cy}" y2="${cy}" stroke="var(--text-3)"/><rect x="${xs(gw2.p25)}" y="${cy-bh/2}" width="${Math.max(1.5,xs(gw2.p75)-xs(gw2.p25))}" height="${bh}" rx="2" fill="${tint(c,38)}" stroke="${c}"/><line x1="${xs(gw2.p50)}" x2="${xs(gw2.p50)}" y1="${cy-bh/2-1}" y2="${cy+bh/2+1}" stroke="var(--text)" stroke-width="2"/><text x="${w-2}" y="${cy+3.5}" font-size="10.5" text-anchor="end" style="fill:${c};font-weight:700">${Math.round(gw2.punct)} %</text></g>`;}
+  });
+  return s+'</svg>';
+}
+const applySel=(rs,sel)=>rs.filter(r=>(sel.wd==null||r.wd===sel.wd)&&(sel.h==null||r.h===sel.h)&&(sel.d==null||r.d===sel.d));
+function selLabel(sel){const p=[];if(sel.d!=null){const dt=new Date(START);dt.setDate(START.getDate()+sel.d);p.push(dt.toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'2-digit'}));}if(sel.wd!=null)p.push(['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'][sel.wd]+'s');if(sel.h!=null)p.push(`${sel.h}–${sel.h+1} Uhr`);return p.length?p.join(', '):'Alle Fahrten im Zeitraum';}
+function selPanel(base,sub,sel){
+  const s=summ(sub),b=summ(base),has=Object.keys(sel).length>0;
+  return`<div class="ph"><h3>Auswahl</h3><span class="sp"></span>${has?'<button class="btn" type="button" data-clear>Auswahl aufheben</button>':'<span class="small muted">noch nichts gewählt</span>'}</div>
+   <div class="selt">${selLabel(sel)}</div>
+   ${s.n?`<div class="selk"><div><span>Pünktlich</span><b style="color:${pcol(s.punct)}">${pct(s.punct)}</b>${has?`<span>${dlt(s.punct,b.punct)} ggü. allen Fahrten</span>`:''}</div><div><span>Median</span><b>${f1(s.p50)} min</b></div><div><span>Mittlere Hälfte</span><b>${f1(s.p25)}–${f1(s.p75)}</b></div><div><span>9 von 10 unter</span><b>${f1(s.p90)} min</b></div><div><span>Ausfälle</span><b>${pct(s.canc)}</b></div><div><span>Höchste</span><b>${f0(s.max)} min</b></div><div><span>Fahrten</span><b>${f0(s.n)}</b></div></div>
+   <div class="lbl" style="margin:10px 0 4px">Verteilung</div>${hist(sub)}<div class="lbl" style="margin:10px 0 4px">Gründe bei &gt; 5 min</div>${causeBars(sub,4)}`:'<p class="muted">Keine Fahrten in dieser Auswahl.</p>'}
+   <a class="more-link" href="#v4">In der Analyse öffnen →</a>`;
+}
+function calendar(all,sel){
+  const dv=daily(all),off=(START.getDay()+6)%7,weeks=Math.ceil((DAYS+off)/7);
+  let s=`<div class="cal" style="grid-template-columns:22px repeat(${weeks},minmax(0,1fr))"><span></span>`;
+  for(let k=0;k<weeks;k++){const dt=new Date(START);dt.setDate(START.getDate()-off+k*7);s+=`<span class="hl">${dt.getDate()}.${dt.getMonth()+1}.</span>`;}
+  for(let wd=0;wd<7;wd++){s+=`<span class="rl">${WD[wd]}</span>`;for(let k=0;k<weeks;k++){const d=k*7+wd-off;if(d<0||d>=DAYS){s+='<span></span>';continue;}const p=dv[d],dt=new Date(START);dt.setDate(START.getDate()+d);
+    s+=`<button type="button" class="c${sel.d===d?' sel':''}" data-d="${d}" style="background:${p==null?'var(--muted-bg)':tint(pcol(p),80)}" title="${dt.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit'})}: ${pct(p)} pünktlich" aria-label="${dt.toLocaleDateString('de-DE')}: ${pct(p)} pünktlich">${dt.getDate()}</button>`;}}
+  return s+'</div>';
+}
+
+/* ================= Cockpit A: Kreuz ================= */
+function renderCA(){
+  const el=document.getElementById('ca');const st={route:8,days:28,sel:{}};
+  el.innerHTML=`${toolbar('ca',st,seg('ca-kind','Abfahrt oder Ankunft',[['dep','Abfahrt'],['arr','Ankunft am Ziel']],'dep'))}<div id="ca-ans"></div>
+   <div class="g12 mt">
+     <div class="pnl s8"><div class="ph"><h3>Wann wird es knapp?</h3><span class="sp"></span><span class="small muted">Stunde, Wochentag oder Feld anklicken</span></div><div class="chart" id="ca-joint"></div>
+       <div class="legend"><span>Felder: Anteil pünktlich</span><span>schlecht</span><span class="scale"></span><span>gut</span><span>· grau = keine Fahrten</span></div></div>
+     <div class="pnl s4" id="ca-sel"></div>
+     <div class="pnl s8"><div class="ph"><h3>Züge</h3><span class="small muted" id="ca-tn"></span><span class="sp"></span><span class="small muted">Spaltenkopf sortiert · Zeile zeigt Einzelfahrten</span></div><div id="ca-trains"></div>${DOTLEG}</div>
+     <div class="pnl s4"><div class="ph"><h3>Jeder Tag</h3><span class="sp"></span><span class="small muted">Tag anklicken</span></div><div id="ca-cal"></div><p class="small muted" style="margin:6px 0 0">Farbe = Anteil pünktlicher Fahrten an diesem Tag. Ausreißer wie Sturm- oder Streiktage fallen sofort auf.</p></div>
+   </div>`;
+  const drawSel=()=>{
+    const all=DATA[st.route],rs=periodFilter(all,st.days),base=st.sel.d!=null?all:rs,sub=applySel(base,st.sel);
+    chart(document.getElementById('ca-joint'),w=>joint(w,rs,st.sel));
+    document.getElementById('ca-sel').innerHTML=selPanel(base,sub,st.sel);
+    document.getElementById('ca-cal').innerHTML=calendar(all,st.sel);
+    const tr=withRuns(sub,Object.keys(st.sel).length?1:3);
+    document.getElementById('ca-tn').textContent=`${tr.length} Züge · ${selLabel(st.sel)}`;
+    table(document.getElementById('ca-trains'),{cols:[...trainCols().filter(c=>c.key!=='max'),dotsCol],rows:tr,key:'punct',dir:'asc',maxH:360,id:r=>r.line+r.num,
+      expand:(box,r)=>{box.innerHTML=`<div class="lbl">Letzte ${Math.min(21,r.runs.length)} Fahrten</div><div class="runs">${r.runs.slice(-21).map(x=>`<span class="run ${dotCls(x)}">${dayLbl(x)} <b>${x.canc?'Ausfall':(x.delay>0?'+':'')+x.delay}</b></span>`).join('')}</div>`;}});
+  };
+  const pick=s=>{st.sel=JSON.stringify(s)===JSON.stringify(st.sel)?{}:s;drawSel();};
+  el.querySelector('#ca-joint').onclick=e=>{const t=e.target.closest('.hit');if(!t)return;const s={};if(t.dataset.wd!=null)s.wd=+t.dataset.wd;if(t.dataset.h!=null)s.h=+t.dataset.h;pick(s);};
+  el.querySelector('#ca-cal').onclick=e=>{const b=e.target.closest('[data-d]');if(b)pick({d:+b.dataset.d});};
+  el.querySelector('#ca-sel').onclick=e=>{if(e.target.closest('[data-clear]'))pick({});};
+  const draw=()=>{const all=DATA[st.route],rs=periodFilter(all,st.days);document.getElementById('ca-ans').innerHTML=answer(rs,prevOf(all,st.days));drawSel();};
+  el.querySelector('#ca-route').onchange=e=>{st.route=+e.target.value;st.sel={};draw();};
+  segBind(el.querySelector('#ca-days'),b=>{st.days=+b.dataset.v;st.sel={};draw();});
+  segBind(el.querySelector('#ca-kind'),()=>{});
+  draw();
+}
+
+/* ================= Cockpit B: Fahrplan ================= */
+function renderCB(){
+  const el=document.getElementById('cb');
+  const WIN={all:[0,24],early:[5,9],day:[9,15],eve:[15,19],late:[19,24]};
+  const DT={wk:[0,1,2,3,4],sa:[5],su:[6],all:[0,1,2,3,4,5,6]};
+  const st={route:8,days:28,dt:'wk',win:'early',lines:null};
+  el.innerHTML=`${toolbar('cb',st,seg('cb-dt','Tagtyp',[['wk','Mo–Fr'],['sa','Sa'],['su','So'],['all','Alle Tage']],st.dt)+seg('cb-win','Tageszeit',[['early','Früh 5–9'],['day','9–15'],['eve','Abend 15–19'],['late','19–24'],['all','Ganzer Tag']],st.win))}<div id="cb-ans"></div>
+   <div class="g12 mt">
+     <div class="pnl s8"><div class="ph"><h3>Fahrplan</h3><span class="small muted" id="cb-n"></span><span class="sp"></span><div class="row" id="cb-lines"></div></div><div id="cb-t"></div>${DOTLEG}</div>
+     <div class="s4 stack">
+       <div class="pnl"><div class="ph"><h3>Tagesprofil</h3><span class="sp"></span><span class="small muted">blau = gewählte Tageszeit</span></div><div class="chart" id="cb-h"></div></div>
+       <div class="pnl"><div class="ph"><h3>Wochentage</h3></div><div class="chart" id="cb-w"></div></div>
+       <div class="pnl"><div class="ph"><h3>Gründe bei &gt; 5 min</h3></div><div id="cb-c"></div></div>
+     </div></div>`;
+  const draw=()=>{
+    const all=DATA[st.route],per=periodFilter(all,st.days),lines=[...new Set(all.map(r=>r.line))];
+    const byDay=per.filter(r=>DT[st.dt].includes(r.wd)&&(!st.lines||st.lines.has(r.line)));
+    const [a,b]=WIN[st.win],f=byDay.filter(r=>r.h>=a&&r.h<b);
+    const pv=prevOf(all,st.days);
+    document.getElementById('cb-ans').innerHTML=answer(f,pv&&pv.filter(r=>DT[st.dt].includes(r.wd)&&r.h>=a&&r.h<b&&(!st.lines||st.lines.has(r.line))));
+    document.getElementById('cb-lines').innerHTML=lines.map(l=>`<button type="button" class="btn ${!st.lines||st.lines.has(l)?'on':''}" data-l="${esc(l)}" aria-pressed="${!st.lines||st.lines.has(l)}">${esc(l)}</button>`).join('');
+    const rows=withRuns(f,2),next=rows.filter(r=>r.min>=NOW).sort((x,y)=>x.min-y.min)[0];
+    document.getElementById('cb-n').textContent=`${rows.length} regelmäßige Abfahrten`;
+    const cols=trainCols().filter(c=>!['max','num'].includes(c.key));
+    cols[0]={...cols[0],render:r=>`<b class="num">${hm(r.min)}</b>${next&&r===next?'<span class="nextb">nächster</span>':''}`};
+    cols.splice(2,0,{key:'num',label:'Zug',render:r=>`<span class="muted num">${r.num}</span>`});
+    table(document.getElementById('cb-t'),{cols:[...cols,dotsCol],rows,key:'min',dir:'asc',maxH:520,id:r=>r.line+r.num,
+      expand:(box,r)=>{box.innerHTML=`<div class="g12"><div class="s7"><div class="lbl">Letzte ${Math.min(21,r.runs.length)} Fahrten</div><div class="runs">${r.runs.slice(-21).map(x=>`<span class="run ${dotCls(x)}">${dayLbl(x)} <b>${x.canc?'Ausfall':(x.delay>0?'+':'')+x.delay}</b></span>`).join('')}</div></div><div class="s5"><div class="lbl" style="margin-bottom:4px">Verteilung dieses Zugs</div>${hist(r.runs)}</div></div>`;}});
+    const hrs=byHour(byDay,5,24),wds=byWd(per.filter(r=>r.h>=a&&r.h<b&&(!st.lines||st.lines.has(r.line)))),yMax=niceMax(Math.max(...hrs.map(g=>g.p90||0),...wds.map(g=>g.p90||0)));
+    chart(document.getElementById('cb-h'),w=>boxplot(w,hrs,{yMax,h:160,range:[a,b],title:g=>g.label+' Uhr'}));
+    chart(document.getElementById('cb-w'),w=>hbox(w,wds,yMax));
+    document.getElementById('cb-c').innerHTML=causeBars(f,5);
+  };
+  el.querySelector('#cb-route').onchange=e=>{st.route=+e.target.value;st.lines=null;draw();};
+  segBind(el.querySelector('#cb-days'),b=>{st.days=+b.dataset.v;draw();});
+  segBind(el.querySelector('#cb-dt'),b=>{st.dt=b.dataset.v;draw();});
+  segBind(el.querySelector('#cb-win'),b=>{st.win=b.dataset.v;draw();});
+  el.querySelector('#cb-lines').onclick=e=>{const b=e.target.closest('[data-l]');if(!b)return;const all=[...new Set(DATA[st.route].map(r=>r.line))];const cur=st.lines||new Set(all);const l=b.dataset.l;if(cur.has(l)&&cur.size>1)cur.delete(l);else cur.add(l);st.lines=cur.size===all.length?null:cur;draw();};
+  draw();
+}
+
+/* ================= Cockpit C: Hin & Zurück ================= */
+function renderCC(){
+  const el=document.getElementById('cc');
+  const PAIRS=[[8,7],[11,12],[5,6],[14,13],[18,17],[15,16],[9,10],[3,4],[1,2],[19,20]];
+  const st={pair:0,days:28,hin:'7-9',rueck:'16-18'};
+  const name=id=>ROUTES.find(r=>r.id===id);
+  el.innerHTML=`<div class="tb"><select class="in" id="cc-pair" aria-label="Streckenpaar">${PAIRS.map(([a],i)=>`<option value="${i}">${esc(name(a).from)} ⇄ ${esc(name(a).to)}</option>`).join('')}</select>${seg('cc-days','Zeitraum',DAYSEG,st.days)}
+     <span class="lbl">Hin</span>${seg('cc-hin','Zeitfenster Hinweg',[['6-8','6–8'],['7-9','7–9'],['8-10','8–10']],st.hin)}<span class="lbl">Zurück</span>${seg('cc-rueck','Zeitfenster Rückweg',[['15-17','15–17'],['16-18','16–18'],['17-19','17–19']],st.rueck)}
+     <span class="sp"></span><a class="livechip" href="#live"><i></i>Live: nächster Zug <b>07:14</b> <em>+3</em></a></div>
+   <div class="pnl mt" id="cc-cmp"></div><div class="dirs mt" id="cc-dirs"></div>`;
+  const dirPanel=(id,label,win,key)=>{
+    const r=name(id),all=periodFilter(DATA[id],st.days).filter(x=>x.wd<5),[a,b]=win.split('-').map(Number),f=all.filter(x=>x.h>=a&&x.h<b);
+    const s=summ(f),sd=summ(all),hrs=byHour(all,5,24),wds=byWd(f).slice(0,5),yMax=niceMax(Math.max(6,...wds.map(g=>g.p90||0)));
+    return{s,html:`<div class="pnl"><span class="lbl">${label} · Mo–Fr ${a}–${b} Uhr</span><h3 class="dir-n">${esc(r.from)} → ${esc(r.to)}</h3>
+      <div class="dir-k"><div><b style="color:${pcol(s.punct)}">${pct(s.punct)}</b><span>pünktlich in deinem Fenster</span><em>ganzer Tag: ${pct(sd.punct)} ${dlt(s.punct,sd.punct)}</em></div><div><b>${f1(s.p50)}</b><span>Median min</span></div><div><b>${f1(s.p90)}</b><span>9 von 10 unter min</span></div><div><b>${pct(s.canc)}</b><span>Ausfälle</span></div></div>
+      <div class="lbl" style="margin-bottom:4px">Tagesverlauf (Zahl = Median-Verspätung)</div>
+      <div class="band" style="grid-template-columns:repeat(${hrs.length},1fr)">${hrs.map(g=>`<div class="${g.key>=a&&g.key<b?'win':''}" style="background:${g.n?tint(pcol(g.punct),70):'var(--muted-bg)'}" title="${g.key} Uhr: ${g.n?pct(g.punct)+' pünktlich, Median '+f1(g.p50)+' min':'keine Fahrten'}">${g.n?Math.round(g.p50):''}</div>`).join('')}</div>
+      <div class="bandl" style="grid-template-columns:repeat(${hrs.length},1fr)">${hrs.map(g=>`<span>${g.key%3===0?g.key:''}</span>`).join('')}</div>
+      <div class="lbl" style="margin:12px 0 4px">Wochentage im Fenster</div><div class="chart" data-c="${key}-w" data-ymax="${yMax}"></div>
+      <div class="lbl" style="margin:10px 0 4px">Züge im Fenster</div><div data-c="${key}-t"></div></div>`,f,wds,yMax};
+  };
+  const draw=()=>{
+    const [h,r]=PAIRS[st.pair],A=dirPanel(h,'Hinweg',st.hin,'h'),B=dirPanel(r,'Rückweg',st.rueck,'r');
+    const dEl=document.getElementById('cc-dirs');dEl.innerHTML=A.html+B.html;
+    for(const[k,X]of[['h',A],['r',B]]){
+      chart(dEl.querySelector(`[data-c="${k}-w"]`),w=>hbox(w,X.wds,X.yMax));
+      table(dEl.querySelector(`[data-c="${k}-t"]`),{rows:withRuns(X.f,2),key:'min',dir:'asc',maxH:300,id:t=>t.line+t.num,cols:[
+        {key:'min',label:'Plan',num:true,asc:true,render:t=>`<b class="num">${hm(t.min)}</b>`},{key:'line',label:'Linie',render:t=>lineTag(t.line,t.cat)},
+        {key:'punct',label:'Pünktlich',num:true,asc:true,render:t=>ppill(t.punct)},{key:'p50',label:'Median',num:true,render:t=>f1(t.p50)},
+        {key:'p90',label:'90 %',num:true,render:t=>`<span style="color:${dcol(t.p90)}">${f1(t.p90)}</span>`},dotsCol]});
+    }
+    const both=summ([...A.f,...B.f]);
+    document.getElementById('cc-cmp').innerHTML=`<div class="row" style="gap:6px 22px"><div><span class="lbl">Ganzer Pendeltag</span><div style="font-size:15px"><b style="font-size:22px;color:${pcol(both.punct)}">${Math.round(both.punct)} %</b> deiner Fahrten pünktlich</div></div>
+      <div class="dir-cmp"><span></span><span class="lbl">Hin</span><span class="lbl">Zurück</span>
+        <span class="muted">Pünktlich</span><b style="color:${pcol(A.s.punct)}">${pct(A.s.punct)}</b><b style="color:${pcol(B.s.punct)}">${pct(B.s.punct)}</b>
+        <span class="muted">9 von 10 unter</span><b>${f1(A.s.p90)} min</b><b>${f1(B.s.p90)} min</b></div>
+      <p class="small" style="margin:0;max-width:52ch;color:var(--text-2)">${Math.abs(A.s.punct-B.s.punct)<2?'Beide Richtungen laufen etwa gleich gut.':`Der <b>${A.s.punct<B.s.punct?'Hinweg':'Rückweg'}</b> ist das größere Risiko: ${Math.round(Math.abs(A.s.punct-B.s.punct))} Punkte weniger pünktlich. Plane dort mehr Puffer ein, etwa ${f1(Math.max(A.s.p90,B.s.p90))} min.`}</p></div>`;
+  };
+  el.querySelector('#cc-pair').onchange=e=>{st.pair=+e.target.value;draw();};
+  segBind(el.querySelector('#cc-days'),b=>{st.days=+b.dataset.v;draw();});
+  segBind(el.querySelector('#cc-hin'),b=>{st.hin=b.dataset.v;draw();});
+  segBind(el.querySelector('#cc-rueck'),b=>{st.rueck=b.dataset.v;draw();});
+  draw();
+}
+
+/* ================= Live: station monitor ================= */
+function renderLive(){
+  const el=document.getElementById('live');
+  const STATIONS={
+    'Esslingen (Neckar)':[['S1','S 1','S','Kirchheim (Teck)',15,4,'1',['Oberesslingen','Zell','Altbach','Plochingen','Wendlingen']],['S1','S 1','S','Herrenberg',15,11,'2',['Mettingen','Obertürkheim','Stuttgart Hbf (tief)','Stuttgart-Vaihingen']],['MEX16','MEX 16','MEX','Geislingen (Steige)',30,2,'4',['Plochingen','Reichenbach (Fils)','Ebersbach (Fils)','Göppingen','Süßen']],['MEX16','MEX 16','MEX','Stuttgart Hbf',30,17,'5',['Stuttgart-Obertürkheim','Stuttgart-Untertürkheim','Stuttgart-Bad Cannstatt']],['RE5','RE 5','RE','Lindau-Reutin',60,38,'4',['Plochingen','Göppingen','Ulm Hbf','Biberach (Riß)','Friedrichshafen Stadt']],['MEX12','MEX 12','MEX','Tübingen Hbf',30,21,'4',['Plochingen','Wendlingen','Nürtingen','Metzingen (Württ)','Reutlingen Hbf']]],
+    'Plochingen':[['S1','S 1','S','Kirchheim (Teck)',15,12,'1',['Wernau (Neckar)','Wendlingen (Neckar)','Ötlingen']],['S1','S 1','S','Herrenberg',15,3,'2',['Altbach','Esslingen (Neckar)','Stuttgart Hbf (tief)']],['MEX16','MEX 16','MEX','Ulm Hbf',30,9,'3',['Reichenbach (Fils)','Göppingen','Geislingen (Steige)','Amstetten']],['MEX18','MEX 18','MEX','Tübingen Hbf',30,24,'6',['Wendlingen','Nürtingen','Metzingen (Württ)','Reutlingen Hbf']],['RE5','RE 5','RE','Stuttgart Hbf',60,51,'5',['Esslingen (Neckar)','Stuttgart-Bad Cannstatt']]],
+    'Stuttgart Hbf':[['S1','S 1','S','Kirchheim (Teck)',15,7,'101',['Bad Cannstatt','Esslingen (Neckar)','Plochingen']],['MEX16','MEX 16','MEX','Ulm Hbf',30,26,'13',['Esslingen (Neckar)','Plochingen','Göppingen','Geislingen (Steige)']],['RE5','RE 5','RE','Lindau-Reutin',60,11,'14',['Plochingen','Ulm Hbf','Friedrichshafen Stadt']],['ICE','ICE 513','ICE','München Hbf',60,52,'15',['Ulm Hbf','Augsburg Hbf']],['MEX12','MEX 12','MEX','Tübingen Hbf',30,1,'11',['Esslingen (Neckar)','Plochingen','Nürtingen','Metzingen (Württ)']]]};
+  const MINE=/Kirchheim|Ulm|Geislingen|Lindau|Tübingen/;
+  const st={station:'Esslingen (Neckar)',mode:'board',only:false,gl:null};
+  const cache={};
+  function deps(name){
+    if(cache[name])return cache[name];const rand=rng(name.length*31+7),o=[];
+    for(const[l,z,c,to,every,off,gl,via]of STATIONS[name])for(let m=6*60+off;m<9*60+30;m+=every){
+      const r=rand();let d=r<.6?0:r<.82?Math.ceil(rand()*4):Math.ceil(5+rand()*14);const x=rand()<.05,chg=!x&&rand()<.07;
+      o.push({m,l,z,c,to,via,d,x,gl:chg?String(+gl+1):gl,chg,note:x?'Fahrt fällt aus. Grund: Personalmangel. Bitte nutzen Sie den nachfolgenden Zug.':d>5?(rand()<.5?'Verzögerungen im Betriebsablauf':'Verspätung eines vorausfahrenden Zuges'):chg?`Heute von Gleis ${chg?String(+gl+1):gl}`:''});}
+    return cache[name]=o.sort((a,b)=>a.m-b.m);
+  }
+  const upcoming=name=>deps(name).filter(x=>x.m+x.d>=NOW&&(!st.only||MINE.test(x.to)));
+  const ca=x=>x.x?'<span class="ca">fällt aus</span>':x.d>0?`<span class="ca">ca. +${x.d}</span>`:'';
+  function board(){
+    const rows=upcoming(st.station).slice(0,9);
+    return`<div class="dbb"><div class="dbb-head"><div><div class="dbb-title">Abfahrt<small>Departure</small></div><div class="dbb-st">${esc(st.station)}</div></div><div class="dbb-clock">${hm(NOW)}</div></div>
+      <div class="dbb-cols"><span>Zeit</span><span>Zug</span><span>Über / Ziel</span><span>Gleis</span></div>
+      ${rows.map(x=>`<div class="dbb-row${x.x?' x':''}"><div><div class="t">${hm(x.m)}</div>${ca(x)}</div><div class="z">${esc(x.z)}</div><div style="min-width:0"><div class="via">${esc(x.via.join(' – '))}</div><div class="dest">${esc(x.to)}</div>${x.note?`<div class="lauf${x.note.length>45?' long':''}"><span>${esc(x.note)}</span></div>`:''}</div><div class="g${x.chg?' chg':''}"><span>${esc(x.gl)}</span></div></div>`).join('')}
+      <div class="dbb-foot"><span>Aktualisiert vor 40 s</span><span>Nächste Aktualisierung in 20 s</span><span>Vollbild: Taste F</span></div></div>`;
+  }
+  function platform(){
+    const gls=[...new Set(STATIONS[st.station].map(s=>s[6]))].sort((a,b)=>a.localeCompare(b,'de',{numeric:true}));
+    if(!gls.includes(st.gl))st.gl=gls[0];
+    const list=upcoming(st.station).filter(x=>x.gl===st.gl),x=list[0],n=list[1];
+    return`<div class="dbb">${x?`<div class="dbg"><div class="dbg-gl"><span>Gleis</span><b>${esc(st.gl)}</b></div><div style="min-width:0"><div class="dbg-tz"><span>${hm(x.m)}</span><span>${esc(x.z)}</span>${ca(x)}</div><div class="dbg-via">über ${esc(x.via.join(' – '))}</div><div class="dbg-dest">${esc(x.to)}</div>${x.note?`<div class="lauf${x.note.length>60?' long':''}" style="font-size:15px;line-height:24px;margin-top:10px"><span>${esc(x.note)}</span></div>`:''}</div></div>
+      <div class="dbg-sec"><span>Abschnitt</span>${['A','B','C','D','E'].map((s,i)=>`<i class="${x.c==='S'?(i<3?'on':''):(i>0&&i<4?'on':'')}">${s}</i>`).join('')}<span>${x.c==='S'?'Halt in A–C':'Halt in B–D'}</span></div>
+      ${n?`<div class="dbg-next"><span>Folgezug</span><b>${hm(n.m)}</b><span>${esc(n.z)}</span><b>${esc(n.to)}</b>${n.d>0?`<span class="ca" style="background:var(--dbb-ink);color:var(--dbb);padding:0 5px;font-weight:700">ca. +${n.d}</span>`:''}</div>`:''}`
+      :`<div class="dbg"><div class="dbg-gl"><span>Gleis</span><b>${esc(st.gl)}</b></div><div class="dbg-dest" style="align-self:center;font-size:24px">Zurzeit kein Zugverkehr</div></div>`}</div>
+      <div class="row" style="margin-top:10px"><span class="lbl">Gleis</span>${gls.map(g=>`<button type="button" class="btn ${g===st.gl?'on':''}" data-gl="${esc(g)}">${esc(g)}</button>`).join('')}</div>`;
+  }
+  function side(){
+    const rand=rng(5);
+    return`<div class="stack"><div class="lbl">Meine Strecken · nächste Züge</div>${ROUTES.filter(r=>[8,11,5,14,12].includes(r.id)).map((r,i)=>{const p=summ(periodFilter(DATA[r.id],7)).punct;
+      const rows=[0,1,2].map(k=>{const m=NOW+3+k*11+i*2,d=Math.max(0,Math.round((rand()-.55)*12)),ln=k%2?'MEX 16':'S 1';return`<div><b>${hm(m)}</b><span>${ln}</span><span>${esc(r.to)}</span>${d?`<em>ca. +${d}</em>`:'<span></span>'}</div>`;}).join('');
+      return`<div class="mini"><h4>${esc(r.from)} → ${esc(r.to)}<span>7 Tage: ${Math.round(p)} % pünktlich</span></h4>${rows}</div>`;}).join('')}
+      <p class="small muted" style="margin:0">Klick auf eine Strecke öffnet ihr Cockpit. Die Analyseseiten laden keine Live-Daten.</p></div>`;
+  }
+  function draw(){
+    el.innerHTML=`<div class="lvbar">${seg('lv-mode','Ansicht',[['board','Abfahrtstafel'],['gleis','Gleisanzeiger']],st.mode)}${seg('lv-st','Bahnhof',Object.keys(STATIONS).map(s=>[s,s.replace(' (Neckar)','')]),st.station)}<label class="chk"><input type="checkbox" id="lv-only" ${st.only?'checked':''}>nur meine Strecken</label></div>
+      <div class="lv"><div style="min-width:0;padding:6px">${st.mode==='board'?board():platform()}</div>${side()}</div>`;
+    segBind(el.querySelector('#lv-mode'),b=>{st.mode=b.dataset.v;draw();});
+    segBind(el.querySelector('#lv-st'),b=>{st.station=b.dataset.v;draw();});
+    el.querySelector('#lv-only').onchange=e=>{st.only=e.target.checked;draw();};
+    el.querySelectorAll('[data-gl]').forEach(b=>b.onclick=()=>{st.gl=b.dataset.gl;draw();});
+  }
+  draw();
+}
+
+/* --------------- routing --------------- */
+const RENDER={ca:renderCA,cb:renderCB,cc:renderCC,v1:renderV1,v2:renderV2,v3:renderV3,v4:renderV4,v5:renderV5,live:renderLive,fazit:()=>{}};
+const done=new Set();
+function show(){
+  let id=(location.hash||'#ca').slice(1);if(!RENDER[id])id='ca';
+  document.querySelectorAll('section[id^="p-"]').forEach(s=>s.hidden=s.id!=='p-'+id);
+  document.querySelectorAll('#tabs a').forEach(a=>{if(a.getAttribute('href')==='#'+id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  if(!done.has(id)){done.add(id);RENDER[id]();}
+}
+window.addEventListener('hashchange',()=>{show();window.scrollTo({top:document.getElementById('tabs').offsetTop-4});});
+show();
+})();
+</script>

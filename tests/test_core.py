@@ -402,3 +402,63 @@ class AggregateConsistencyTest(unittest.TestCase):
         agg = w.collect(conn, "d", ORIGIN, start, end)
         self.assertEqual(sum(agg["cause"].values()), 6)
         conn.close()
+
+
+class CockpitApiTest(unittest.TestCase):
+    """/samples must count exactly like the aggregates; /live board adds via stops and the route flag."""
+
+    def setUp(self):
+        self.conn = storage.connect(":memory:")
+        storage.init_db(self.conn)
+        storage.upsert_stop_places(self.conn, STOP_PLACES)
+        self.conn.execute("INSERT INTO routes (id, origin_eva, dest_eva) VALUES (1, ?, ?)", (ORIGIN, DEST))
+
+    def tearDown(self):
+        self.conn.close()
+
+    def load(self, entries):
+        evs = [storage.event_from_entry(e, "dep", ORIGIN, STOP_PLACES, True) for e in entries]
+        storage.upsert_events(self.conn, evs)
+        storage.reclassify(self.conn, 0, 2**31)
+        storage.classify_station(self.conn, ORIGIN, "dep", 0, 2**31)
+
+    def test_samples_match_kpis(self):
+        import dbmonitor.web as w
+        entries = [entry(f"t{i}", hh, d, number=7100 + i) for i, (hh, d) in
+                   enumerate((("06:10", 2), ("07:20", 9), ("07:50", 5), ("17:45", 31), ("23:50", 0)))]
+        entries[1]["_causeCodes"] = ["43"]
+        entries.append(entry("cx", "12:00", cancelled=True, number=7200))
+        entries.append(entry("pv", "13:00", 4, time_type="PREVIEW", number=7300))  # not measured
+        self.load(entries)
+        start, end = storage.day_bounds(DAY.date())
+        s = w.route_samples(self.conn, 1, start, end)
+        k = w.kpis_of(storage.aggregate(storage.trip_rows(self.conn, "r", "1", start, end)))
+        trips = s["trips"]
+        self.assertEqual(len(trips), k["planned"])
+        delays = [t[3] for t in trips if t[3] is not None]
+        self.assertEqual(len(delays), k["measured"])
+        self.assertEqual(sum(1 for d in delays if d < 6), k["punctual"])
+        self.assertEqual(s["days"], [DAY.date().isoformat()])
+        by_min = {t[1]: t for t in trips}
+        self.assertEqual(by_min[7 * 60 + 20][3], 9)
+        self.assertEqual(s["statuses"][by_min[12 * 60][2]], "cancelled")
+        self.assertIsNone(by_min[13 * 60][3])
+        self.assertEqual(s["cause_sets"][by_min[7 * 60 + 20][6]], ["43"])
+        self.assertEqual(by_min[6 * 60 + 10][6], 0)
+        self.assertEqual(s["trains"][by_min[7 * 60 + 20][5]][:2], ["S", "7101"])
+
+    def test_live_board_via_and_route_flag(self):
+        import dbmonitor.web as w
+        soon = dt.datetime.now(TZ).replace(second=0, microsecond=0) + dt.timedelta(minutes=30)
+        mine = entry("mine", "08:00", 3, via=(OTHER, DEST))
+        other = entry("other", "08:00", 0, via=(OTHER,), number=7202)
+        for e, plus in ((mine, 0), (other, 5)):
+            t = soon + dt.timedelta(minutes=plus)
+            e["timeSchedule"] = t.isoformat()
+            e["time"] = (t + dt.timedelta(minutes=3 if e is mine else 0)).isoformat()
+        self.load([mine, other])
+        rows = w.live_board(self.conn, ORIGIN)
+        self.assertEqual([r["mine"] for r in rows], [True, False])
+        self.assertEqual(rows[0]["via"], ["Plochingen", "Stuttgart Hbf"])
+        self.assertEqual(rows[0]["delay_min"], 3)
+        self.assertNotIn("path", rows[0])

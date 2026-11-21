@@ -2,6 +2,20 @@
 
 All notable changes to the DB Live Tracker / Pendelmonitor project.
 
+## [Unreleased]
+
+### Changed
+- Route page redesigned as a dense cockpit: one summary line (share punctual, "every n-th train late", worst hour, most reliable train, median, 90 % value, comparison with the previous period) instead of six tiles
+- Cross chart: hour boxplots on top, weekday boxplots on the right, heatmap in between with shared axes; clicking an hour, weekday or cell fills a selection panel (quantiles, distribution, reasons) and filters the timetable
+- Timetable: every regular train with share punctual, median, 90 % value, mini boxplot, cancellations and its last 14 runs; sortable by every column, filters for days, time of day and line, click shows each single run
+- Calendar of daily punctuality (click selects the day); the full trip list moved into a collapsible section
+- Live data moved out of the analysis pages: new page `/live` in the look of station displays (blue, white lines, "ca. +5" chips, running text, "über …" line) with departure board, platform display and the next trains of the routes starting there; route and station pages only link to it
+
+### Added
+- `GET /api/routes/{id}/samples`: all trips of a period in compact form (counting rules as in the aggregates) for quantiles of any selection
+- `GET /api/live`: board with next stops and route flag plus the next trains per route, in one request
+- Gzip compression for API responses
+
 ## [3.0.0] - 2026-11-20
 
 Switch from the Timetables/IRIS API (being phased out by DB) to **OpenBoards**, new data model and new UI.

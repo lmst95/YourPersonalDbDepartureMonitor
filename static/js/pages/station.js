@@ -1,12 +1,11 @@
-import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, time, delayBadge, trainLabel,
-  platform, pctColor, pctClass, setUpdated, dateLong, $ } from "../ui.js";
+import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, pctColor, pctClass, setUpdated, dateLong, $ } from "../ui.js";
 import { renderHeat, renderTrend, renderDist, renderCauses, renderTrains } from "../charts.js";
 
 const eva = location.pathname.split("/").pop();
 const p0 = getParams();
 const state = {
   period: p0.from ? "custom" : (p0.period || "30d"), from: p0.from || "", to: p0.to || "",
-  kind: p0.kind === "arr" ? "arr" : "dep", board: null,
+  kind: p0.kind === "arr" ? "arr" : "dep",
 };
 
 const rangeParams = () => (state.period === "custom" ? { from: state.from, to: state.to } : { period: state.period });
@@ -50,23 +49,6 @@ function renderLines(rows) {
   }).join("");
 }
 
-function boardRow(t) {
-  const shifted = t.dep_actual && t.delay_min && t.status !== "cancelled";
-  return `<li class="row">
-    <div class="t">${shifted ? `<s>${time(t.planned)}</s><span class="rt">${time(t.dep_actual)}</span>` : time(t.planned)}</div>
-    <div class="main">${trainLabel(t)} <span class="small">${state.kind === "dep" ? "nach" : "von"} ${esc(t.direction || "?")}</span></div>
-    <div class="right">${delayBadge(t)}</div>
-    <div class="meta">${platform(t)}${t.replacement_label ? `<span>Ersatz: ${esc(t.replacement_label)}</span>` : ""}</div>
-  </li>`;
-}
-
-function renderBoard() {
-  if (!state.board) return;
-  const rows = state.board[state.kind];
-  $("#h-board").textContent = state.kind === "dep" ? "Nächste Abfahrten" : "Nächste Ankünfte";
-  $("#board").innerHTML = rows.length ? rows.map(boardRow).join("") : `<li class="empty">Keine Züge in den nächsten Stunden.</li>`;
-}
-
 function renderRoutes(routes) {
   $("#routes-section").classList.toggle("hidden", !routes.length);
   $("#routes").innerHTML = routes.map((r) => {
@@ -90,11 +72,6 @@ async function load() {
   } catch (e) { errorBox($("#kpis"), e); }
 }
 
-async function loadBoard() {
-  try { state.board = await api(`/api/stations/${encodeURIComponent(eva)}/board`); renderBoard(); }
-  catch (e) { errorBox($("#board"), e); }
-}
-
 // ---------- controls
 document.querySelectorAll("#kind button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.kind === state.kind));
 $("#kind").addEventListener("click", (e) => {
@@ -102,7 +79,7 @@ $("#kind").addEventListener("click", (e) => {
   state.kind = b.dataset.kind;
   document.querySelectorAll("#kind button").forEach((x) => x.setAttribute("aria-pressed", x === b));
   setParams({ kind: state.kind === "dep" ? null : state.kind });
-  renderBoard(); load();
+  load();
 });
 const form = $("#daterange");
 periodChips($("#periods"), state.period, (p) => {
@@ -115,10 +92,9 @@ form.addEventListener("submit", (e) => {
   setParams({ period: null, from: state.from, to: state.to }); load();
 });
 
+$("#livechip").href = `/live?eva=${encodeURIComponent(eva)}`;
 load();
-loadBoard();
 api("/api/stations", { period: "7d" }).then((s) => {
   if (s.since) $("#note").textContent = `Bahnhofsdaten (alle Züge) liegen seit ${dateLong(s.since)} vor. Pünktlich = weniger als 6 min Verspätung.`;
 }).catch(() => {});
 api("/api/health").then((h) => setUpdated(h.last_update)).catch(() => {});
-setInterval(() => { if (document.visibilityState === "visible") loadBoard(); }, 60000);

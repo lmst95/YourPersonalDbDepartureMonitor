@@ -29,6 +29,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from . import TZ, storage
 
@@ -45,6 +46,7 @@ CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+app.add_middleware(GZipMiddleware, minimum_size=2048)  # /samples sends every trip of the period
 
 
 # ------------------------------------------------------------------ middleware
@@ -594,6 +596,67 @@ def route_trips(route_id: int = PathParam(..., ge=1, le=10**9),
     return with_conn(build)
 
 
+SAMPLE_STATUS = ("ok", "cancelled", "partial", "sev", "replaced", "unknown")
+
+
+def route_samples(conn: sqlite3.Connection, route_id: int, start: int, end: int) -> Dict[str, Any]:
+    """Every trip of the period in a compact form, so the browser can compute quantiles for any selection
+    (hour, weekday, single cell, day, train). Same counting rules as storage.aggregate():
+    replacement trips are left out, coupled trains count once, a delay is only given when it is measured.
+
+    trips: [day index, minute of day, status index, departure delay | null, arrival delay | null,
+            train index, cause set index (0 = none)]"""
+    rows = conn.execute("""
+        SELECT planned, jid, coupled_jid, category, number, line, status, time_type, delay_min, arr_delay_min,
+               cause_codes
+        FROM route_trips WHERE route_id = ? AND planned >= ? AND planned < ? AND status <> 'replacement'
+        ORDER BY planned""", (route_id, start, end)).fetchall()
+    jids = {r["jid"] for r in rows}
+    days: Dict[str, int] = {}
+    trains: Dict[Tuple[str, str, str], int] = {}
+    cause_sets: Dict[Tuple[str, ...], int] = {(): 0}
+    out: List[List[Any]] = []
+    for r in rows:
+        if r["coupled_jid"] is not None and r["coupled_jid"] != r["jid"] and r["coupled_jid"] in jids:
+            continue
+        t = storage.local_dt(r["planned"])
+        di = days.setdefault(t.date().isoformat(), len(days))
+        ti = trains.setdefault((r["category"] or "", r["number"] or "", r["line"] or ""), len(trains))
+        st = r["status"]
+        measured = st in storage.COUNTED and r["time_type"] == "REAL" and r["delay_min"] is not None
+        delay = r["delay_min"] if measured else None
+        codes: Tuple[str, ...] = ()
+        if st in ("cancelled", "partial") or (r["delay_min"] or 0) >= PUNCTUAL_LIMIT:
+            codes = tuple(c for c in storage.decode_causes(r["cause_codes"]) if c != "00")
+        ci = cause_sets.setdefault(codes, len(cause_sets))
+        out.append([di, t.hour * 60 + t.minute, SAMPLE_STATUS.index(st) if st in SAMPLE_STATUS else 5,
+                    delay, r["arr_delay_min"], ti, ci])
+    used = {c for s in cause_sets for c in s}
+    texts = {r[0]: r[1] for r in conn.execute("SELECT code, text FROM cause_codes")} if used else {}
+    return {"days": list(days), "statuses": list(SAMPLE_STATUS),
+            "trains": [list(k) for k in trains], "cause_sets": [list(k) for k in cause_sets],
+            "cause_text": {c: texts.get(c) or f"Sonstiger Grund (Code {c})" for c in sorted(used)},
+            "trips": out}
+
+
+@app.get("/api/routes/{route_id}/samples")
+def route_samples_api(route_id: int = PathParam(..., ge=1, le=10**9),
+                      period: Optional[str] = Query(None, pattern=PERIOD_PATTERN),
+                      date_from: Optional[str] = Query(None, alias="from", pattern=DATE_PATTERN),
+                      date_to: Optional[str] = Query(None, alias="to", pattern=DATE_PATTERN)):
+    def build(conn):
+        r = route_row(conn, route_id)
+        start, end, label = period_range(period, date_from, date_to)
+        kpis = route_kpis(conn, route_id, start, end)
+        prev = None
+        if start > 0 and end < FAR_FUTURE:  # same length directly before, for the arrows in the summary
+            prev = route_kpis(conn, route_id, start - (end - start), start)
+        reverse = route_kpis(conn, r["reverse_id"], start, end) if r["reverse_id"] else None
+        return {"route": r, "label": label, "kpis": kpis, "prev_kpis": prev, "reverse_kpis": reverse,
+                **route_samples(conn, route_id, start, end)}
+    return cached(f"samples:{route_id}:{period}:{date_from}:{date_to}", lambda: with_conn(build))
+
+
 # ------------------------------------------------------------------ API: stations
 OBSERVED_SQL = """
     SELECT origin_eva AS eva FROM routes WHERE active = 1 UNION SELECT dest_eva FROM routes WHERE active = 1
@@ -684,6 +747,63 @@ def station(eva: str = PathParam(..., pattern=r"^\d{6,9}$"),
     return cached(f"station:{eva}:{period}:{date_from}:{date_to}:{kind}", lambda: with_conn(build))
 
 
+def live_board(conn: sqlite3.Connection, eva: str, limit: int = 40) -> List[Dict[str, Any]]:
+    """Departure board for /live: like station_board() plus the next stops ("über …") and whether the train
+    serves one of the routes starting here."""
+    now = int(dt.datetime.now(TZ).timestamp())
+    dests = {r[0] for r in conn.execute("SELECT dest_eva FROM routes WHERE active = 1 AND origin_eva = ?", (eva,))}
+    rows = [dict(r) for r in conn.execute("""
+        SELECT e.planned, e.category, e.number, e.line, e.st_status AS status, e.time_type, e.actual AS dep_actual,
+               CASE WHEN e.st_status = 'replaced' THEN e.st_delay ELSE e.delay_min END AS delay_min,
+               e.platform, e.planned_platform,
+               CASE WHEN e.platform IS NOT NULL AND e.planned_platform IS NOT NULL
+                         AND e.platform <> e.planned_platform THEN 1 ELSE 0 END AS platform_changed,
+               e.replaced_by_label AS replacement_label, e.dest_eva, s.name AS direction, e.path
+        FROM stop_events e LEFT JOIN stations s ON s.eva = e.dest_eva
+        WHERE e.board_eva = ? AND e.kind = 'dep' AND e.iris = 0 AND e.planned >= ? AND e.planned < ?
+          AND COALESCE(e.st_status, 'ok') NOT IN ('ignore', 'replacement')
+          AND (CASE WHEN e.st_status = 'cancelled' THEN e.planned ELSE COALESCE(e.actual, e.planned) END) >= ?
+        ORDER BY e.planned LIMIT ?""", (eva, now - 86400, now + 6 * 3600, now - 60, limit))]
+    evas = {s["e"] for r in rows for s in (storage.decode_path(r["path"], {}) or []) if s["e"]}
+    names = {}
+    if evas:
+        names = {r[0]: r[1] for r in conn.execute(
+            f"SELECT eva, name FROM stations WHERE eva IN ({','.join('?' * len(evas))})", tuple(evas))}
+    for r in rows:
+        path = storage.decode_path(r.pop("path"), {}) or []
+        stops = [s for s in path if s["e"] and s["e"] != r["dest_eva"] and not s.get("x")]
+        r["via"] = [names[s["e"]] for s in stops if s["e"] in names][:5]
+        r["mine"] = bool(dests & ({s["e"] for s in path} | {r["dest_eva"]}))
+        r.pop("dest_eva")
+    return with_iso(rows)
+
+
+@app.get("/api/live")
+def live(eva: Optional[str] = Query(None, pattern=r"^\d{6,9}$")):
+    """Everything the /live page needs in one request: the stations with routes, the board of one of them
+    and the next trains of the routes starting there."""
+    def build(conn):
+        stations = [dict(r) for r in conn.execute("""
+            SELECT s.eva, s.name, COUNT(*) routes FROM routes r JOIN stations s ON s.eva = r.origin_eva
+            WHERE r.active = 1 GROUP BY s.eva ORDER BY s.name""")]
+        if not stations:
+            return {"stations": [], "eva": None, "board": [], "routes": [], "last_update": None}
+        # default: the station where most routes start (usually home)
+        sel = eva if eva in {s["eva"] for s in stations} else max(stations, key=lambda s: s["routes"])["eva"]
+        routes = [dict(r) for r in conn.execute("""
+            SELECT r.id, so.name origin_name, sd.name dest_name FROM routes r
+            LEFT JOIN stations so ON so.eva = r.origin_eva LEFT JOIN stations sd ON sd.eva = r.dest_eva
+            WHERE r.active = 1 AND r.origin_eva = ? ORDER BY sd.name""", (sel,))]
+        week = period_range("7d", None, None)
+        for r in routes:
+            r["next"] = live_rows(conn, r["id"], 0, 3)["next"]
+            r["punctuality_7d"] = route_kpis(conn, r["id"], week[0], week[1])["punctuality"]
+        last = conn.execute("SELECT value FROM collector_state WHERE key = 'last_data_update'").fetchone()
+        return {"stations": stations, "eva": sel, "board": live_board(conn, sel), "routes": routes,
+                "last_update": last[0] if last else None}
+    return cached(f"livepage:{eva}", lambda: with_conn(build), ttl=30)
+
+
 @app.get("/api/stations/{eva}/board")
 def station_live(eva: str = PathParam(..., pattern=r"^\d{6,9}$")):
     def build(conn):
@@ -739,6 +859,11 @@ def stations_page():
 @app.get("/stats", include_in_schema=False)
 def stats_page():
     return page("stats.html")
+
+
+@app.get("/live", include_in_schema=False)
+def live_page():
+    return page("live.html")
 
 
 @app.get("/datenschutz", include_in_schema=False)

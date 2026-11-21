@@ -15,84 +15,80 @@
     <a href="/" aria-current="page">Strecken</a>
     <a href="/stations">Bahnhöfe</a>
     <a href="/stats">Vergleich</a>
+    <a href="/live" class="live-link">Live</a>
   </nav>
   <div class="updated" id="updated" aria-live="polite"></div>
 </div></header>
-<main>
-  <div class="page-head">
+<main class="ck">
+  <div class="ck-head">
     <div class="grow">
       <a class="crumb" href="/">← Alle Strecken</a>
       <h1 class="title-route" id="title"><span class="skeleton" style="min-height:1.4em;width:14em;display:inline-block"></span></h1>
-      <p class="muted small" id="period-label" style="margin:4px 0 0"></p>
     </div>
-    <a class="btn hidden" id="reverse" href="#">⇄ Gegenrichtung</a>
+    <a class="livechip hidden" id="livechip" href="/live"></a>
+    <a class="btn btn-s hidden" id="reverse" href="#">⇄ Gegenrichtung</a>
   </div>
-  <div class="chips" id="periods" role="group" aria-label="Zeitraum"></div>
+  <div class="ck-bar">
+    <div class="chips" id="periods" role="group" aria-label="Zeitraum"></div>
+    <div class="segmented seg-s" role="group" aria-label="Verspätung bei" id="mode">
+      <button type="button" data-v="dep" aria-pressed="true">Abfahrt</button>
+      <button type="button" data-v="arr" aria-pressed="false">Ankunft am Ziel</button>
+    </div>
+  </div>
   <form class="daterange hidden" id="daterange">
     <label>Von<input class="input" type="date" name="from" required></label>
     <label>Bis<input class="input" type="date" name="to" required></label>
     <button class="btn" type="submit">Anwenden</button>
   </form>
 
-  <section class="section" aria-labelledby="h-kpi"><h2 id="h-kpi" class="sr-only">Kennzahlen</h2>
-    <div class="kpis" id="kpis"></div>
-    <div class="notes" id="notes"></div>
-  </section>
+  <section class="ans" id="answer" aria-live="polite" aria-label="Zusammenfassung"><div class="skeleton" style="min-height:58px;width:100%"></div></section>
+  <div class="notes" id="notes"></div>
 
-  <div class="grid-2 section">
-    <section class="card" aria-labelledby="h-live">
-      <header class="card-pad" style="padding-bottom:6px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><h2 id="h-live">Live</h2><span class="muted small">zuletzt abgefahren und nächste Züge · aktualisiert automatisch</span></header>
-      <ul class="rows" id="live"><li class="empty">Lade…</li></ul>
+  <div class="ck-grid">
+    <section class="pnl ck-cross" aria-labelledby="h-cross">
+      <div class="ph"><h2 id="h-cross">Wann wird es knapp?</h2><span class="sp"></span><span class="hint">Stunde, Wochentag oder Feld anklicken</span></div>
+      <div class="chart" id="cross"></div>
+      <div class="legend"><span>Felder: Anteil pünktlich</span><span>schlecht</span><span class="scale"></span><span>gut</span><span>· grau = keine Fahrten</span></div>
     </section>
-    <section class="card card-pad" aria-labelledby="h-heat">
-      <h2 id="h-heat">Wann ist es am schlimmsten?</h2>
-      <p class="muted small" style="margin:4px 0 10px">Pünktlichkeit nach Wochentag und Abfahrtsstunde. Feld antippen für Details.</p>
-      <div class="heat-wrap"><div class="heat" id="heat"></div></div>
-      <div class="legend"><span>schlecht</span><span class="scale"></span><span>gut</span><span>· grau = keine Fahrten</span></div>
-      <div class="heat-info" id="heat-info" aria-live="polite"></div>
-    </section>
-  </div>
+    <section class="pnl ck-sel" id="sel" aria-live="polite" aria-label="Auswahl"></section>
 
-  <section class="section card card-pad" aria-labelledby="h-trend">
-    <header style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px"><h2 id="h-trend">Verlauf</h2><span class="muted small" id="trend-hint"></span></header>
-    <div class="chart-box"><canvas id="trend" aria-label="Verlauf der Pünktlichkeit" role="img"></canvas></div>
-  </section>
-
-  <div class="grid-2 section">
-    <section class="card card-pad" aria-labelledby="h-dist">
-      <h2 id="h-dist" style="margin-bottom:10px">Verteilung</h2>
-      <div class="dist" id="dist"></div>
-      <div class="dist-legend" id="dist-legend"></div>
+    <section class="pnl ck-trains" aria-labelledby="h-trains">
+      <div class="ph"><h2 id="h-trains">Fahrplan</h2><span class="hint" id="trains-n"></span><span class="sp"></span><span class="hint">Spaltenkopf sortiert · Zeile zeigt die einzelnen Fahrten</span></div>
+      <div class="ck-filters">
+        <div class="segmented seg-s" role="group" aria-label="Tage" id="f-days">
+          <button type="button" data-v="all" aria-pressed="true">Alle Tage</button><button type="button" data-v="wk" aria-pressed="false">Mo–Fr</button><button type="button" data-v="sa" aria-pressed="false">Sa</button><button type="button" data-v="su" aria-pressed="false">So</button>
+        </div>
+        <div class="segmented seg-s" role="group" aria-label="Tageszeit" id="f-time">
+          <button type="button" data-v="all" aria-pressed="true">Ganzer Tag</button><button type="button" data-v="0-9">bis 9</button><button type="button" data-v="9-15">9–15</button><button type="button" data-v="15-19">15–19</button><button type="button" data-v="19-24">ab 19</button>
+        </div>
+        <div class="linechips" id="f-lines" role="group" aria-label="Linien"></div>
+        <button type="button" class="selchip hidden" id="f-sel" title="Auswahl aus der Grafik aufheben"></button>
+      </div>
+      <div id="trains"></div>
+      <div id="dotleg"></div>
     </section>
-    <section class="card card-pad" aria-labelledby="h-causes">
-      <h2 id="h-causes" style="margin-bottom:10px">Häufigste Gründe</h2>
-      <ul class="bars" id="causes"></ul>
+    <section class="pnl ck-cal" aria-labelledby="h-cal">
+      <div class="ph"><h2 id="h-cal">Jeder Tag</h2><span class="sp"></span><span class="hint">Tag anklicken</span></div>
+      <div id="cal" class="cal-wrap"></div>
+      <p class="hint">Farbe = Anteil pünktlicher Fahrten an diesem Tag.</p>
     </section>
   </div>
 
-  <section class="section card card-pad" aria-labelledby="h-trains">
-    <h2 id="h-trains">Problemzüge</h2>
-    <p class="muted small" style="margin:4px 0 12px">Züge mit dem höchsten Anteil verspäteter oder ausgefallener Fahrten (mind. 5 Fahrten).</p>
-    <ul class="bars" id="trains"></ul>
-  </section>
-
-  <section class="section card" aria-labelledby="h-trips">
-    <header class="card-pad" style="padding-bottom:8px">
-      <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap"><h2 id="h-trips">Fahrten</h2><span class="muted small" id="trips-total"></span></div>
-      <div class="chips" id="trip-filter" role="group" aria-label="Filter" style="margin-top:10px"></div>
-      <input class="input" id="trip-q" type="search" maxlength="30" placeholder="Zug suchen, z. B. S1 oder RE 4213" style="margin-top:10px" aria-label="Zug suchen">
-    </header>
+  <details class="pnl ck-trips" id="trips-box">
+    <summary><h2>Alle Einzelfahrten</h2><span class="hint" id="trips-total"></span></summary>
+    <div class="chips" id="trip-filter" role="group" aria-label="Filter" style="margin-top:10px"></div>
+    <input class="input" id="trip-q" type="search" maxlength="30" placeholder="Zug suchen, z. B. S1 oder RE 4213" style="margin-top:10px" aria-label="Zug suchen">
     <ul class="rows" id="trips"></ul>
     <div class="list-footer"><button class="btn hidden" id="more" type="button">Mehr laden</button></div>
-  </section>
+  </details>
 </main>
 <footer class="site"><span>Daten: DB InfraGO OpenBoards</span><a href="/datenschutz">Datenschutz</a><a href="https://github.com/lmst95/YourPersonalDbDepartureMonitor" rel="noopener">Quellcode</a></footer>
 <nav class="bottomnav" aria-label="Navigation">
   <a href="/" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h6.5"/></svg>Strecken</a>
   <a href="/stations"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12M9 21v-6h6v6"/></svg>Bahnhöfe</a>
   <a href="/stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Vergleich</a>
+  <a href="/live"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M7 21h10M12 17v4M7 9h4M7 12h7"/></svg>Live</a>
 </nav>
-<script src="/static/vendor/chart.umd.js"></script>
 <script type="module" src="/static/js/pages/route.js"></script>
 </body>
 </html>
