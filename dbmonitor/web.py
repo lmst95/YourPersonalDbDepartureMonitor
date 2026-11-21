@@ -22,6 +22,7 @@ import threading
 import time
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
+from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Path as PathParam, Query, Request
@@ -109,6 +110,32 @@ def cached(key: str, fn, ttl: float = CACHE_TTL):
             _cache.clear()
         _cache[key] = (now, value)
     return value
+
+
+_jcache: "OrderedDict[str, Tuple[float, bytes]]" = OrderedDict()
+JCACHE_MAX_BYTES = 32 * 2**20
+
+
+def cached_json(key: str, fn, ttl: float = CACHE_TTL) -> Response:
+    """For large answers (all trips of a period): keeps the encoded JSON instead of Python objects – about a
+    tenth of the memory – in an LRU limited to JCACHE_MAX_BYTES, so the 256 MB container cannot fill up."""
+    now = time.monotonic()
+    body = None
+    with _cache_lock:
+        hit = _jcache.get(key)
+        if hit and now - hit[0] < ttl:
+            _jcache.move_to_end(key)
+            body = hit[1]
+    if body is None:
+        body = json.dumps(fn(), ensure_ascii=False, separators=(",", ":")).encode()
+        with _cache_lock:
+            _jcache[key] = (now, body)
+            _jcache.move_to_end(key)
+            total = sum(len(v[1]) for v in _jcache.values())
+            while total > JCACHE_MAX_BYTES and len(_jcache) > 1:
+                _, (_, old) = _jcache.popitem(last=False)
+                total -= len(old)
+    return Response(content=body, media_type="application/json")
 
 
 def db() -> sqlite3.Connection:
@@ -729,7 +756,7 @@ def route_samples_api(route_id: int = PathParam(..., ge=1, le=10**9),
         return {"route": r, "label": label, "kpis": route_kpis(conn, route_id, start, end),
                 "prev_kpis": _prev(start, end, lambda a, b: route_kpis(conn, route_id, a, b)),
                 "reverse_kpis": reverse, **route_samples(conn, route_id, start, end)}
-    return cached(f"samples:{route_id}:{period}:{date_from}:{date_to}", lambda: with_conn(build))
+    return cached_json(f"samples:{route_id}:{period}:{date_from}:{date_to}", lambda: with_conn(build))
 
 
 # ------------------------------------------------------------------ API: stations
@@ -845,7 +872,7 @@ def station_samples(eva: str = PathParam(..., pattern=r"^\d{6,9}$"),
                 "other_kpis": station_kpis(conn, eva, "arr" if kind == "dep" else "dep", start, end),
                 "prev_kpis": _prev(start, end, lambda a, b: station_kpis(conn, eva, kind, a, b)),
                 "since": storage.iso_local(first), **samples_of(conn, _station_rows(conn, eva, kind, start, end))}
-    return cached(f"ssamples:{eva}:{period}:{date_from}:{date_to}:{kind}", lambda: with_conn(build))
+    return cached_json(f"ssamples:{eva}:{period}:{date_from}:{date_to}:{kind}", lambda: with_conn(build))
 
 
 def live_board(conn: sqlite3.Connection, eva: str, limit: int = 40) -> List[Dict[str, Any]]:
@@ -960,7 +987,7 @@ def compare_hourly(period: Optional[str] = Query(None, pattern=PERIOD_PATTERN),
             r["kpis"] = route_kpis(conn, r["id"], start, end)
             r.update(hourly_stats(_route_rows(conn, r["id"], start, end)))
         return {"label": label, "routes": routes}
-    return cached(f"hourly:{period}:{date_from}:{date_to}", lambda: with_conn(build))
+    return cached_json(f"hourly:{period}:{date_from}:{date_to}", lambda: with_conn(build))
 
 
 # ------------------------------------------------------------------ pages

@@ -1,5 +1,6 @@
 // Analysis workbench: filters (weekdays, hours, lines) on the left, six views on the right that all use the
 // same filtered trips. Works for a route or a station; the state lives in the URL so links can preset it.
+// The file is deliberately not called "analyse.js": ad blockers (EasyPrivacy) block scripts with that name.
 import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, setUpdated, $ } from "../ui.js";
 import {
   WD, WD_LONG, f1, hm, unpack, setMode, summ, byHour, byWd, byTrain, causes, trainName, lineKey, pill, dotClass, runText,

@@ -15,6 +15,8 @@ All notable changes to the DB Live Tracker / Pendelmonitor project.
 - Start page: routes as a sortable table (punctuality, median, 90 % value, mini boxplot, cancellations, 30-day sparkline, worst hour, next trains), map below
 - Comparison page: matrix route × departure hour (punctuality, median or 90 % value; click an hour to sort by it), daily profile per route on the same scale, sortable KPI table; stations as sortable table
 - Stations list as sortable table
+- Large answers (`/samples`, `/api/compare/hourly`) are cached as encoded JSON in a size-limited LRU (32 MB) instead of Python objects; the web container stayed close to its 256 MB limit before
+- The workbench script is called `werkbank.js`: ad blockers (EasyPrivacy) block scripts named `analyse.js`
 - Own JS/CSS is revalidated on every load (`Cache-Control: no-cache` + ETag), so an update shows immediately
 
 ### Added

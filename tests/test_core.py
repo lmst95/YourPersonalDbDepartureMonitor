@@ -481,3 +481,21 @@ class CockpitApiTest(unittest.TestCase):
         self.assertEqual(len(s["trips"]), 7)
         self.assertEqual(sum(1 for t in s["trips"] if s["statuses"][t[2]] == "cancelled"), 1)
         self.assertEqual(sorted(t[1] for t in s["trains"])[-1], "7500")
+
+
+class JsonCacheTest(unittest.TestCase):
+    def test_lru_byte_limit(self):
+        import dbmonitor.web as w
+        w._jcache.clear()
+        old = w.JCACHE_MAX_BYTES
+        w.JCACHE_MAX_BYTES = 250
+        try:
+            calls = []
+            for k in ("a", "b", "c"):
+                w.cached_json(k, lambda k=k: calls.append(k) or {"x": k * 100})
+            self.assertEqual(list(w._jcache), ["b", "c"])          # oldest dropped, limit kept
+            self.assertEqual(json.loads(w.cached_json("c", lambda: {"x": "new"}).body)["x"], "c" * 100)
+            self.assertEqual(calls, ["a", "b", "c"])                # served from the cache
+        finally:
+            w.JCACHE_MAX_BYTES = old
+            w._jcache.clear()
