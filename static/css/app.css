@@ -169,7 +169,6 @@ details.more > summary::-webkit-details-marker { display: none; }
 .flag { font-size: .75rem; color: var(--text-3); border: 1px dashed var(--border); border-radius: 6px; padding: 0 6px; white-space: nowrap; }
 
 /* ---------- overview ---------- */
-@media (min-width: 1000px) { .view-toggle { display: none !important; } }
 #map { height: calc(100vh - 230px); min-height: 360px; border-radius: var(--radius); }
 @media (min-width: 1000px) { #map { height: calc(100vh - 110px); } }
 .leaflet-container { background: var(--surface-2); font: inherit; }
@@ -560,11 +559,9 @@ main.lvp { max-width: 1440px; padding-top: 10px; }
 .ov .map-wrap { display: none; }
 .ov.show-map .map-wrap { display: block; }
 .ov.show-map .ov-list { display: none; }
-.ov #map { height: calc(100vh - 230px); min-height: 360px; }
-@media (min-width: 1000px) {
-  .ov .map-wrap, .ov.show-map .ov-list { display: block; }
-  .ov #map { height: 460px; }
-}
+.ov #map { height: calc(100vh - 290px); min-height: 380px; }
+@media (min-width: 1000px) { .ov #map { height: calc(100vh - 250px); min-height: 460px; } }
+.view-toggle button { min-width: 7.5em; }
 .ov-list .hint { margin: 8px 0 0; }
 .ov table.t td:first-child, .ov table.t th:first-child { position: sticky; left: 0; background: var(--surface); z-index: 2; }
 .ov table.t th:first-child { z-index: 3; }

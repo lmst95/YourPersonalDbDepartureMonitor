@@ -12,6 +12,7 @@ All notable changes to the DB Live Tracker / Pendelmonitor project.
 - Live data moved out of the analysis pages: new page `/live` in the look of station displays (blue, white lines, "ca. +5" chips, running text, "über …" line) with departure board, platform display and the next trains of the routes starting there; route and station pages only link to it
 
 - Station page uses the same cockpit (departures or arrivals, timetable with direction) plus sortable tables per line/direction and for the routes starting or ending there
+- Start page: switch between map (default) and the route table at every screen width, so the map is not pushed below the table
 - Start page: routes as a sortable table (punctuality, median, 90 % value, mini boxplot, cancellations, 30-day sparkline, worst hour, next trains), map below
 - Comparison page: matrix route × departure hour (punctuality, median or 90 % value; click an hour to sort by it), daily profile per route on the same scale, sortable KPI table; stations as sortable table
 - Stations list as sortable table

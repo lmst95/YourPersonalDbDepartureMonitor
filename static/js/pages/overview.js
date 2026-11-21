@@ -2,7 +2,7 @@ import { api, esc, errorBox, getParams, setParams, periodChips, pct, mins, num, 
   sparkline, pctColor, setUpdated, $ } from "../ui.js";
 import { WD, f1, miniBox, sortTable } from "../cockpit.js";
 
-const state = { period: getParams().period || "7d", view: getParams().view || "list", q: getParams().q || "", data: null };
+const state = { period: getParams().period || "7d", view: getParams().view === "list" ? "list" : "map", q: getParams().q || "", data: null };
 let map = null, layers = null, fitPending = true;
 
 // ---------- map styles (same OSM tiles, different CSS filter; choice stored per browser)
@@ -163,13 +163,13 @@ async function load() {
     $("#period-label").textContent = `${state.data.label} · ${state.data.routes.length} Strecken`;
     setUpdated(state.data.last_update);
     renderList();
-    if (state.view === "map" || matchMedia("(min-width: 1000px)").matches) renderMap();
+    if (state.view === "map") renderMap();
   } catch (e) { errorBox($("#table"), e); }
 }
 
 function setView(v) {
   state.view = v;
-  setParams({ view: v === "list" ? null : v });
+  setParams({ view: v === "map" ? null : v });
   document.querySelectorAll(".view-toggle button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.view === v));
   $("#overview").classList.toggle("show-map", v === "map");
   if (v === "map" && state.data) renderMap();
